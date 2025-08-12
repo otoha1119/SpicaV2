@@ -1,0 +1,24 @@
+
+
+services:
+  spica2:
+    build:
+      context: ..                      
+      dockerfile: docker/Dockerfile    # Dockerfile の相対パス
+    container_name: spica2            # コンテナ名
+    shm_size: '2gb'
+
+    env_file:
+      - .env                           # DATASET_PATH を読み込む
+
+    ports:
+      - '50002:8887'
+      - '8097:8097'
+
+    volumes:
+      - ../:/workspace                  # NOCTUA 全体を /workspace にマウント
+      #- ${DATASET_PATH}:/workspace/data # データセットを /workspace/DataSet にマウント
+      #- ${DATASET_PATH}:/workspace/DataSet
+
+    working_dir: /workspace
+    command: bash -c "jupyter notebook --allow-root --ip=0.0.0.0 --port=50002"

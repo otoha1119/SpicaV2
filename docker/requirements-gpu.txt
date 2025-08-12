@@ -1,0 +1,38 @@
+# PyTorch CUDA 12.1 ホイールを取得する追加インデックス（Dockerfileに合わせる場合）
+--extra-index-url https://download.pytorch.org/whl/cu121
+
+# PyTorchとビジョン関連
+torch>=2.0.0
+torchvision>=0.15.1
+
+# 共通ライブラリ
+scikit-learn>=1.1.1
+seaborn>=0.11.2
+tqdm>=4.64.0
+notebook>=6.4.12
+visdom>=0.2.3
+torchinfo>=1.8.0
+h5py>=3.7.0
+pydicom
+
+# 固定バージョンのライブラリ
+einops==0.6.0
+matplotlib==3.6.2
+numpy==1.23.4
+Pillow==9.3.0
+
+# 追加ライブラリ
+pandas
+japanize-matplotlib
+jupyter
+openpyxl
+opencv-python
+pillow
+ipython
+pylibjpeg
+tensorboard>=2.12.0
+
+# 医療画像処理・機械学習
+monai==0.9.1
+pytorch_lightning>=1.5.0,<2.0.0
+torchmetrics==0.7.0
