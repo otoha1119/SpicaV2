@@ -1,3 +1,4 @@
+#推論スクリプト
 """General-purpose test script for image-to-image translation.
 
 Once you have trained your model with train.py, you can use this script to test the model.

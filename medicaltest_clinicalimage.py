@@ -1,3 +1,4 @@
+#大規模画像用推論スクリプト
 from models import networks
 import argparse
 import os
