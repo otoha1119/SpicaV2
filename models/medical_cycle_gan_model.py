@@ -11,6 +11,8 @@ import os
 import cv2
 import nibabel as nib
 import pdb
+import torch.nn.functional as F
+
 
 class MedicalCycleGANModel(BaseModel):
     """
@@ -141,6 +143,8 @@ class MedicalCycleGANModel(BaseModel):
         self.real_B = input['micro' if AtoB else 'clinical'].to(self.device)
         # self.small_clinical = input['small_clinical'].to(self.device)
         # self.big_clinical = input['big_clinical'].to(self.device)
+        
+        
 
         self.image_paths = input['clinical_paths' if AtoB else 'micro_paths']
 
