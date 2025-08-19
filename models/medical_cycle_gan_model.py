@@ -11,6 +11,8 @@ import os
 import cv2
 import nibabel as nib
 import pdb
+import torch.nn.functional as F
+
 
 class MedicalCycleGANModel(BaseModel):
     """
@@ -141,6 +143,13 @@ class MedicalCycleGANModel(BaseModel):
         self.real_B = input['micro' if AtoB else 'clinical'].to(self.device)
         # self.small_clinical = input['small_clinical'].to(self.device)
         # self.big_clinical = input['big_clinical'].to(self.device)
+        if getattr(self.opt, 'verbose', False) and not hasattr(self, '_dbg_inp'):
+            try:
+                print(f"[DBG] real_A {tuple(self.real_A.shape)}  real_B {tuple(self.real_B.shape)}")
+            except Exception:
+                pass
+            self._dbg_inp = True
+        
 
         self.image_paths = input['clinical_paths' if AtoB else 'micro_paths']
 
@@ -194,13 +203,44 @@ class MedicalCycleGANModel(BaseModel):
             # G_A should be identity if real_B is fed: ||G_A(B) - B||
             self.idt_A = self.netG_A(self.real_B)
             m = AvgPool2d(8, stride=8)
+            
+            
+            # ここから変更
             self.idt_A = m(self.idt_A)
+            # （real_B と idt_A の空間サイズを一致させる）
+            if self.idt_A.shape[-2:] != self.real_B.shape[-2:]:
+                if getattr(self.opt, 'verbose', False) and not hasattr(self, '_dbg_idtA'):
+                    print(f"[DBG] idt_A {tuple(self.idt_A.shape)} vs real_B {tuple(self.real_B.shape)} -> align(idt_A)")
+                    self._dbg_idtA = True
+                self.idt_A = F.interpolate(
+                    self.idt_A,
+                    size=self.real_B.shape[-2:],
+                    mode='bilinear',
+                    align_corners=False
+                )
+            # 変更終了
+            
             self.loss_idt_A = self.criterionIdt(self.idt_A, self.real_B) * lambda_B * lambda_idt
             # G_B should be identity if real_A is fed: ||G_B(A) - A||
             
             self.idt_B = self.netG_B(self.real_A)
             n = UpsamplingBilinear2d(scale_factor=8)
+            
+            # ここから変更
             self.idt_B = n(self.idt_B)
+            # （ここで real_A と idt_B の空間サイズを一致させる）
+            if self.idt_B.shape[-2:] != self.real_A.shape[-2:]:
+                if getattr(self.opt, 'verbose', False) and not hasattr(self, '_dbg_idtB'):
+                    print(f"[DBG] idt_B {tuple(self.idt_B.shape)} vs real_A {tuple(self.real_A.shape)} -> align(idt_B)")
+                    self._dbg_idtB = True
+                self.idt_B = F.interpolate(
+                    self.idt_B,
+                    size=self.real_A.shape[-2:],
+                    mode='bilinear',
+                    align_corners=False
+                )
+            # 変更終了
+
             self.loss_idt_B = self.criterionIdt(self.idt_B, self.real_A) * lambda_A * lambda_idt * 0.1
         else:
             self.loss_idt_A = 0
@@ -211,8 +251,35 @@ class MedicalCycleGANModel(BaseModel):
         # GAN loss D_B(G_B(B))
         self.loss_G_B = self.criterionGAN(self.netD_B(self.fake_A), True) * self.opt.lambda_G_B
         # Forward cycle loss || G_B(G_A(A)) - A||
+        
+        # ここから変更
+        if self.rec_A.shape[-2:] != self.real_A.shape[-2:]:
+            if getattr(self.opt, 'verbose', False) and not hasattr(self, '_dbg_cycA'):
+                print(f"[DBG] rec_A {tuple(self.rec_A.shape)} vs real_A {tuple(self.real_A.shape)} -> align(rec_A)")
+                self._dbg_cycA = True
+            self.rec_A = F.interpolate(
+                self.rec_A,
+                size=self.real_A.shape[-2:],
+                mode='bilinear',
+                align_corners=False
+            )
+        # 変更終了
         self.loss_cycle_A = self.criterionCycle(self.rec_A, self.real_A) * lambda_A
         # Backward cycle loss || G_A(G_B(B)) - B||
+        # ここから変更
+        if self.rec_B.shape[-2:] != self.real_B.shape[-2:]:
+            if getattr(self.opt, 'verbose', False) and not hasattr(self, '_dbg_cycB'):
+                print(f"[DBG] rec_B {tuple(self.rec_B.shape)} vs real_B {tuple(self.real_B.shape)} -> align(rec_B)")
+                self._dbg_cycB = True
+            self.rec_B = F.interpolate(
+                self.rec_B,
+                size=self.real_B.shape[-2:],
+                mode='bilinear',
+                align_corners=False
+            )
+        # 変更終了
+        
+        
         self.loss_cycle_B = self.criterionCycle(self.rec_B, self.real_B) * lambda_B
         #downsample fake micro to clinical scale and calculate loss
         
@@ -221,6 +288,13 @@ class MedicalCycleGANModel(BaseModel):
             #print('use the downsampleloss')
             m = AvgPool2d(8, stride=8)
             self.downsample_fake_B = m(self.fake_B)
+            # ここから変更
+            if self.downsample_fake_B.shape[-2:] != self.real_A.shape[-2:]:
+                if getattr(self.opt, 'verbose', False) and not hasattr(self, '_dbg_down'):
+                    print(f"[DBG] down_fake_B {tuple(self.downsample_fake_B.shape)} vs real_A {tuple(self.real_A.shape)} -> align(down_fake_B)")
+                    self._dbg_down = True
+                self.downsample_fake_B = F.interpolate(self.downsample_fake_B, size=self.real_A.shape[-2:], mode='bilinear', align_corners=False)
+            # 変更終了
             self.loss_downsample = self.criterionCycle(self.downsample_fake_B, self.real_A) * self.opt.lambda_downsample_loss
         else:
             self.loss_downsample = 0
@@ -229,6 +303,13 @@ class MedicalCycleGANModel(BaseModel):
         if self.opt.upsample_loss > 0:
             n = UpsamplingNearest2d(scale_factor=8)
             self.upsample_fake_A = n(self.fake_A)
+            # ここから変更
+            if self.upsample_fake_A.shape[-2:] != self.real_B.shape[-2:]:
+                if getattr(self.opt, 'verbose', False) and not hasattr(self, '_dbg_up'):
+                    print(f"[DBG] up_fake_A {tuple(self.upsample_fake_A.shape)} vs real_B {tuple(self.real_B.shape)} -> align(up_fake_A)")
+                    self._dbg_up = True
+                self.upsample_fake_A = F.interpolate(self.upsample_fake_A, size=self.real_B.shape[-2:], mode='bilinear', align_corners=False)
+            # 変更終了
             self.loss_upsample = self.criterionCycle(self.upsample_fake_A, self.real_B) * self.opt.lambda_upsample_loss
         else:
             self.loss_upsample = 0
@@ -236,16 +317,27 @@ class MedicalCycleGANModel(BaseModel):
         if self.opt.clinical_ssim_loss > 0:
             m = AvgPool2d(8, stride=8)
             self.downsample_fake_B = m(self.fake_B)
-            ssim_loss = pytorch_ssim.SSIM()
+            # ここから変更
+            ssim_loss = pytorch_ssim.SSIM()   # ← これを追加
+            if self.downsample_fake_B.shape[-2:] != self.real_A.shape[-2:]:
+                self.downsample_fake_B = F.interpolate(self.downsample_fake_B,
+                                                    size=self.real_A.shape[-2:],
+                                                    mode='bilinear',
+                                                    align_corners=False)
             self.loss_clinical_ssim = (1 - ssim_loss(self.downsample_fake_B, self.real_A)) * self.opt.lambda_clinical_ssim
-            
         else:
             self.loss_clinical_ssim  = 0
 
         if self.opt.micro_ssim_loss > 0:
             n = UpsamplingNearest2d(scale_factor=8)
             self.upsample_fake_A = n(self.fake_A)
-            ssim_loss = pytorch_ssim.SSIM()
+            # ここから変更
+            ssim_loss = pytorch_ssim.SSIM()   # ← これを追加
+            if self.upsample_fake_A.shape[-2:] != self.real_B.shape[-2:]:
+                self.upsample_fake_A = F.interpolate(self.upsample_fake_A,
+                                                    size=self.real_B.shape[-2:],
+                                                    mode='bilinear',
+                                                    align_corners=False)
             self.loss_micro_ssim = (1 - ssim_loss(self.upsample_fake_A, self.real_B)) * self.opt.lambda_micro_ssim
         else:
             self.loss_micro_ssim = 0

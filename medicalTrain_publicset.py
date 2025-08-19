@@ -1,3 +1,4 @@
+#特定の医療画像に特化した学習スクリプト
 # -*- coding: utf8 -*-
 """General-purpose training script for image-to-image translation.
 

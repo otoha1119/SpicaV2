@@ -62,6 +62,14 @@ class BaseOptions():
         parser.add_argument('--medical_input_nc', type=int, default=1, help='# of input image channels: 3 for RGB and 1 for grayscale')
         parser.add_argument('--medical_output_nc', type=int, default=1, help='# of output image channels: 3 for RGB and 1 for grayscale')
         
+        parser.add_argument(
+            '--limit_per_patient',
+            type=int,
+            default=0,
+            help='最大スキャン数を患者ごとに制限する（0なら無制限）'
+        )
+        
+        
         self.initialized = True
         return parser
 
@@ -94,29 +102,20 @@ class BaseOptions():
         return parser.parse_args()
 
     def print_options(self, opt):
-        """Print and save options
-
-        It will print both current options and default values(if different).
-        It will save options into a text file / [checkpoints_dir] / opt.txt
-        """
         message = ''
-        message += '----------------- Options ---------------\n'
         for k, v in sorted(vars(opt).items()):
-            comment = ''
             default = self.parser.get_default(k)
             if v != default:
-                comment = '\t[default: %s]' % str(default)
-            message += '{:>25}: {:<30}{}\n'.format(str(k), str(v), comment)
-        message += '----------------- End -------------------'
-        print(message)
+                message += f'{k}: {v} [default: {default}]\n'
+            else:
+                message += f'{k}: {v}\n'
 
-        # save to the disk
+        # 画面には出さない
         expr_dir = os.path.join(opt.checkpoints_dir, opt.name)
         util.mkdirs(expr_dir)
-        file_name = os.path.join(expr_dir, 'opt.txt')
+        file_name = os.path.join(expr_dir, '{}_opt.txt'.format(opt.phase))
         with open(file_name, 'wt') as opt_file:
             opt_file.write(message)
-            opt_file.write('\n')
 
     def parse(self):
         """Parse our options, create checkpoints directory suffix, and set up gpu device."""

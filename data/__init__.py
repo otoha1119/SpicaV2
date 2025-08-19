@@ -91,7 +91,7 @@ class CustomDatasetDataLoader():
     def __len__(self):
         """Return the number of data in the dataset"""
         #print(type(self.dataset)) #<class 'data.unaligned_dataset.UnalignedDataset'>
-        return min(len(self.dataset), self.opt.max_dataset_size)
+        return int(min(len(self.dataset), self.opt.max_dataset_size))
 
     def __iter__(self): #这个对应于enumerate，当对这个类调用enumerate方法的时候进行什么样的操作
         """Return a batch of data"""

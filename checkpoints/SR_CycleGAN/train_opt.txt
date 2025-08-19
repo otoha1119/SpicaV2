@@ -1,0 +1,115 @@
+A_patch_size: 32
+A_patchs_num: 10000
+B_patch_size: 256
+B_patchs_num: 10000
+all_clinical_paths: ['/homes/tzheng/CTdata/CTMicroNUrespsurg/HE_matched/nulung014-4.nii.gz', '/homes/tzheng/CTdata/CTMicroNUrespsurg/HE_matched/nulung015-5.nii.gz', '/homes/tzheng/CTdata/CTMicroNUrespsurg/HE_matched/nulung030.nii.gz', '/homes/tzheng/CTdata/CTMicroNUrespsurg/HE_matched/nulung031.nii.gz', '/homes/tzheng/CTdata/CTMicroNUrespsurg/HE_matched/nulung050.nii.gz']
+all_full_clinical_paths: ['/homes/tzheng/CTdata/CTMicroNUrespsurg/cct/nulung015-5.nii.gz']
+all_micro_paths: ['/homes/tzheng/CTdata/CTMicroNUrespsurg/nii/nulung014/uCT/nulung014_027_000_cropped.nii.gz', '/homes/tzheng/CTdata/CTMicroNUrespsurg/nii/nulung015/uCT/nulung015_034_001_cropped.nii.gz', '/homes/tzheng/CTdata/CTMicroNUrespsurg/nii/nulung030/DICOM_nulung030_cb_004_zf_ringRem_med3_cropped.nii.gz', '/homes/tzheng/CTdata/CTMicroNUrespsurg/nii/nulung031/uCT/DICOM_nulung031_cb_003_zf_ringRem_med3_cropped.nii.gz', '/homes/tzheng/CTdata/CTMicroNUrespsurg/nii/nulung050/nulung050_053_000_cropped.nii.gz']
+all_registrated_clinical_paths: ['/homes/tzheng/CTdata/Hatakoshi_registration_forAlphaGAN/CT_image_normalized_cropped_fit_with_uCT_reso.nii.gz']
+all_registrated_micro_paths: ['/homes/tzheng/CTdata/Hatakoshi_registration_forAlphaGAN/outputResult.nii.gz']
+batch_num: 2000
+batch_size: 1 [default: 4]
+beta1: 0.5
+body_thresh_norm: 0.1
+checkpoints_dir: ./checkpoints
+clinical2micronetG: clinical_to_micro_resnet_9blocks
+clinical_folder: 
+clinical_inter: -1.0
+clinical_patch_size: 32
+clinical_ssim_loss: 1.0
+code_channel: 128
+continue_train: False
+crop_size: 256
+dataroot: /workspace/DataSet/ImageCAS [default: /]
+dataset_mode: dicom_ctpcct_2x [default: medical_2D]
+direction: AtoB
+display_env: main
+display_freq: 400
+display_id: 0
+display_ncols: 4
+display_port: 8097
+display_server: http://localhost
+display_winsize: 256
+downsample_loss: 1.0
+encoder_path: /homes/tzheng/Mypythonfiles/alphaGAN-master/alphagan-results/e-epoch-100.pth
+epoch: 200
+epoch_count: 1
+epoch_size: 0
+fast_scan: True [default: False]
+fillhole: -1.0
+gan_mode: lsgan
+gpu_ids: 0 [default: 1]
+hr_oversample_ratio: 1.0
+hr_patch: 196
+hr_root: /workspace/DataSet/photonCT/PhotonCT1024v2
+init_gain: 0.02
+init_type: normal
+input_nc: 1
+isTrain: True [default: None]
+lambda_A: 1.0
+lambda_B: 1.0
+lambda_G_A: 1.0
+lambda_G_B: 1.0
+lambda_clinical_inter: 5.0
+lambda_clinical_ssim: 1.0
+lambda_downsample_loss: 1.0
+lambda_fillhole: 0.1
+lambda_identity: 0.2
+lambda_micro_ssim: 1.0
+lambda_random_mesh_average: 0.2
+lambda_random_mesh_ssim: 0.5
+lambda_structure_loss: 0.8
+lambda_upsample_loss: 1.0
+limit_per_patient: 0
+load_iter: 0 [default: 0]
+load_size: 286
+lr: 1e-05
+lr_decay_iters: 50
+lr_patch: 98
+lr_policy: linear
+lr_root: /workspace/DataSet/ImageCAS
+maskdatafolder: /homes/tzheng/CTdata/CTMicroNUrespsurg/Mask
+max_dataset_size: 40000.0
+medical_input_nc: 1
+medical_output_nc: 1
+micro2clinicalnetG: micro_to_clinical_resnet_9blocks
+micro_folder: 
+micro_patch_size: 256
+micro_ssim_loss: 1.0
+min_body_coverage: 0.3
+model: medical_cycle_gan
+n_layers_D: 3
+name: SR_CycleGAN [default: experiment_name]
+ndf: 64
+netD: basic
+netG: resnet_9blocks
+ngf: 64
+niter: 100
+niter_decay: 100
+no_dropout: True
+no_flip: False
+no_html: False
+norm: instance
+num_samples: 200
+num_threads: 4
+output_nc: 1
+phase: train
+pool_size: 50
+preprocess: resize_and_crop
+print_freq: 100
+random_mesh_average: -1
+random_mesh_num: 20
+random_mesh_size: 30
+random_mesh_ssim: -1.0
+sampling_times: 3
+save_by_iter: False
+save_epoch_freq: 1
+save_latest_freq: 5000
+serial_batches: False
+sobel_loss: 0
+structure_loss: -1.0
+suffix: 
+update_html_freq: 1000
+upsample_loss: 1.0
+use_body_mask: False
+verbose: True [default: False]
