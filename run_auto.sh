@@ -25,5 +25,5 @@ python train.py --dataroot /workspace/DataSet/ImageCAS \
                 --num_threads 4 \
                 --fast_scan \
                 --limit_per_patient 0 \
-                --verbose \
+                #--verbose \
                 --sampling_times 1

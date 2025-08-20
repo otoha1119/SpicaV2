@@ -112,4 +112,4 @@ suffix:
 update_html_freq: 1000
 upsample_loss: 1.0
 use_body_mask: False
-verbose: True [default: False]
+verbose: False
