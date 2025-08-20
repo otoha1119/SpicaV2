@@ -101,7 +101,7 @@ random_mesh_average: -1
 random_mesh_num: 20
 random_mesh_size: 30
 random_mesh_ssim: -1.0
-sampling_times: 3
+sampling_times: 1
 save_by_iter: False
 save_epoch_freq: 1
 save_latest_freq: 5000

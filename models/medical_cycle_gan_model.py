@@ -102,11 +102,15 @@ class MedicalCycleGANModel(BaseModel):
             self.model_names = ['G_A', 'G_B']
 
         # define networks (both Generators and discriminators)
-        self.netG_A = networks.define_G(opt.medical_input_nc, opt.medical_output_nc, opt.ngf, opt.clinical2micronetG, opt.norm,
-                                        not opt.no_dropout, opt.init_type, opt.init_gain, self.gpu_ids, opt.sampling_times)
+        self.netG_A = networks.define_G(self.opt.medical_input_nc, self.opt.medical_output_nc, self.opt.ngf,
+                                self.opt.clinical2micronetG, self.opt.norm, not self.opt.no_dropout,
+                                init_type=self.opt.init_type, init_gain=self.opt.init_gain, gpu_ids=self.gpu_ids,
+                                sampling_times=self.opt.sampling_times)
         
-        self.netG_B = networks.define_G(opt.medical_output_nc, opt.medical_input_nc, opt.ngf, opt.micro2clinicalnetG, opt.norm,
-                                        not opt.no_dropout, opt.init_type, opt.init_gain, self.gpu_ids, opt.sampling_times)
+        self.netG_B = networks.define_G(self.opt.medical_input_nc, self.opt.medical_output_nc, self.opt.ngf,
+                                self.opt.micro2clinicalnetG, self.opt.norm, not self.opt.no_dropout,
+                                init_type=self.opt.init_type, init_gain=self.opt.init_gain, gpu_ids=self.gpu_ids,
+                                sampling_times=self.opt.sampling_times)
         
         if self.isTrain:  # define discriminators
             self.netD_A = networks.define_D(opt.medical_output_nc, opt.ndf, opt.netD,
@@ -194,6 +198,7 @@ class MedicalCycleGANModel(BaseModel):
 
     def backward_G(self, epoch):
         """Calculate the loss for generators G_A and G_B"""
+        scale = int(2 ** int(self.opt.sampling_times))  # 例: sampling_times=1 → scale=2
         lambda_idt = self.opt.lambda_identity
         lambda_A = self.opt.lambda_A
         lambda_B = self.opt.lambda_B
@@ -202,7 +207,8 @@ class MedicalCycleGANModel(BaseModel):
         if lambda_idt > 0:
             # G_A should be identity if real_B is fed: ||G_A(B) - B||
             self.idt_A = self.netG_A(self.real_B)
-            m = AvgPool2d(8, stride=8)
+            #m = AvgPool2d(8, stride=8)
+            m = AvgPool2d(scale, stride=scale)
             
             
             # ここから変更
@@ -224,7 +230,8 @@ class MedicalCycleGANModel(BaseModel):
             # G_B should be identity if real_A is fed: ||G_B(A) - A||
             
             self.idt_B = self.netG_B(self.real_A)
-            n = UpsamplingBilinear2d(scale_factor=8)
+            #n = UpsamplingBilinear2d(scale_factor=8)
+            n = UpsamplingBilinear2d(scale_factor=scale)
             
             # ここから変更
             self.idt_B = n(self.idt_B)
@@ -286,7 +293,8 @@ class MedicalCycleGANModel(BaseModel):
         # downsample loss in SR-CycleGAN
         if self.opt.downsample_loss > 0:            
             #print('use the downsampleloss')
-            m = AvgPool2d(8, stride=8)
+            m = AvgPool2d(scale, stride=scale)
+            #m = AvgPool2d(8, stride=8)
             self.downsample_fake_B = m(self.fake_B)
             # ここから変更
             if self.downsample_fake_B.shape[-2:] != self.real_A.shape[-2:]:
@@ -301,7 +309,8 @@ class MedicalCycleGANModel(BaseModel):
 
         # upsample loss in SR-CycleGAN
         if self.opt.upsample_loss > 0:
-            n = UpsamplingNearest2d(scale_factor=8)
+            n = UpsamplingNearest2d(scale_factor=scale)
+            #n = UpsamplingNearest2d(scale_factor=8)
             self.upsample_fake_A = n(self.fake_A)
             # ここから変更
             if self.upsample_fake_A.shape[-2:] != self.real_B.shape[-2:]:
@@ -315,7 +324,8 @@ class MedicalCycleGANModel(BaseModel):
             self.loss_upsample = 0
 
         if self.opt.clinical_ssim_loss > 0:
-            m = AvgPool2d(8, stride=8)
+            m = AvgPool2d(scale, stride=scale)
+            #m = AvgPool2d(8, stride=8)
             self.downsample_fake_B = m(self.fake_B)
             # ここから変更
             ssim_loss = pytorch_ssim.SSIM()   # ← これを追加
@@ -329,7 +339,8 @@ class MedicalCycleGANModel(BaseModel):
             self.loss_clinical_ssim  = 0
 
         if self.opt.micro_ssim_loss > 0:
-            n = UpsamplingNearest2d(scale_factor=8)
+            n = UpsamplingNearest2d(scale_factor=scale)
+            #n = UpsamplingNearest2d(scale_factor=8)
             self.upsample_fake_A = n(self.fake_A)
             # ここから変更
             ssim_loss = pytorch_ssim.SSIM()   # ← これを追加
