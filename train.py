@@ -8,8 +8,11 @@ from contextlib import redirect_stdout
 from options.train_options import TrainOptions
 from data import create_dataset
 from models import create_model
-from util.visualizer import Visualizer
+#from util.visualizer import Visualizer
+from util.visualizer2 import Visualizer2
 from tqdm import tqdm
+
+Visualizer = Visualizer2
 
 if __name__ == '__main__':
     opt = TrainOptions().parse()
