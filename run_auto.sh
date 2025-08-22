@@ -1,16 +1,16 @@
 #!/bin/bash
-./run_auto.sh
+# ./run_auto.sh
 
-chmod +x run_auto.sh 
+# chmod +x run_auto.sh 
 set -e
 
 echo "=== 依存関係をインストールします ==="
-apt-get update
-apt-get install -y libgl1-mesa-glx
+# apt-get update
+# apt-get install -y libgl1-mesa-glx
 
-pip install --upgrade pip
-pip install -r requirements.txt
-python -m pip install nibabel
+# pip install --upgrade pip
+# pip install -r requirements.txt
+# python -m pip install nibabel
 
 echo "=== 依存関係インストール完了 ==="
 
