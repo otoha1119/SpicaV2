@@ -1,0 +1,57 @@
+all_clinical_paths: ['/homes/tzheng/CTdata/CTMicroNUrespsurg/cct/nulung031.512.nii.gz', '/homes/tzheng/CTdata/CTMicroNUrespsurg/cct/nulung050.nii.gz', '/homes/tzheng/CTdata/CTMicroNUrespsurg/cct/nulung030.nii.gz']
+all_micro_paths: ['/homes/tzheng/CTdata/CTMicroNUrespsurg/nii/nulung050/nulung050_053_000.nii.gz', '/homes/tzheng/CTdata/CTMicroNUrespsurg/converted/DICOM_nulung030_cb_004_zf_ringRem_med3.nii.gz']
+aspect_ratio: 1.0
+batch_num: 2000
+batch_size: 4
+checkpoints_dir: /workspace/checkpoints_mac [default: ./checkpoints]
+clinical2micronetG: clinical_to_micro_resnet_9blocks
+clinical_folder: 
+clinical_patch_size: 32
+crop_size: 256
+dataroot: /
+dataset_mode: dicom_ctpcct_2x_test [default: medical_2D]
+direction: AtoB
+display_winsize: 256
+epoch: 167 [default: 200]
+eval: False
+gpu_ids: -1 [default: 1]
+halves_pixel_spacing: True [default: False]
+init_gain: 0.02
+init_type: normal
+input_dicom: /workspace/IM_091.dcm [default: None]
+input_nc: 1
+isTrain: False [default: None]
+limit_per_patient: 0
+load_iter: 0
+load_size: 256
+maskdatafolder: /homes/tzheng/CTdata/CTMicroNUrespsurg/Mask
+max_dataset_size: 40000
+medical_input_nc: 1
+medical_output_nc: 1
+micro2clinicalnetG: micro_to_clinical_resnet_9blocks
+micro_folder: 
+micro_patch_size: 256
+model: medical_cycle_gan [default: test]
+n_layers_D: 3
+name: SR_CycleGAN [default: experiment_name]
+ndf: 64
+netD: basic
+netG: resnet_9blocks
+ngf: 64
+no_dropout: True
+no_flip: False
+norm: instance
+ntest: inf
+num_test: 50
+num_threads: 4
+output_dicom: /workspace/results/SR_2x.dcm [default: results/SR_2x.dcm]
+output_nc: 1
+pad_mod: 4
+phase: test
+preprocess: resize_and_crop
+results_dir: ./results/
+sampling_times: 1 [default: 3]
+serial_batches: False
+suffix: 
+use_G: A
+verbose: False

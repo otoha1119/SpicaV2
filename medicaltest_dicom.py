@@ -196,15 +196,25 @@ def main():
     opt.no_flip = True
     opt.display_id = -1
 
-    # dataset_mode 指定が無ければテスト用Datasetを使う
+    # dataset_mode 未指定のときだけ既定化
     if not getattr(opt, "dataset_mode", None) or opt.dataset_mode == "single":
         opt.dataset_mode = "dicom_ctpcct_2x_test"
 
-    # チェックポイントとエポック（手動ロードで使用）
-    opt.checkpoints_dir = "/workspace/checkpoints"
-    opt.name = "SR_CycleGAN"
-    opt.epoch = "167"
-    setattr(opt, "which_epoch", "167")
+    # ★CLIを尊重★ which_epoch が無ければ epoch から補完（上書きしない）
+    if not getattr(opt, "which_epoch", None):
+        setattr(opt, "which_epoch", str(getattr(opt, "epoch", "latest")))
+
+    print("[INFO] checkpoints_dir =", opt.checkpoints_dir)
+    print("[INFO] name            =", opt.name)
+    print("[INFO] which_epoch     =", getattr(opt, "which_epoch", "latest"))
+    print("[INFO] use_G           =", getattr(opt, "use_G", "A"))
+    
+
+    # # チェックポイントとエポック（手動ロードで使用）
+    # opt.checkpoints_dir = "/workspace/checkpoints"
+    # opt.name = "SR_CycleGAN"
+    # opt.epoch = "167"
+    # setattr(opt, "which_epoch", "167")
 
     # 3) データセット＆モデルを作成
     dataset = create_dataset(opt)

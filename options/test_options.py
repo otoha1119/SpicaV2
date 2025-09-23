@@ -2,6 +2,8 @@ from .base_options import BaseOptions
 
 
 class TestOptions(BaseOptions):
+    def parse(self):
+        return BaseOptions.parse(self)
     """This class includes test options.
 
     It also includes shared options defined in BaseOptions.
