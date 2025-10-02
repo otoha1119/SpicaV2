@@ -75,7 +75,9 @@ class TrainOptions(BaseOptions):
         # JMI rebuttal: adjust patch size -- and changing dataset size is
         parser.add_argument('--clinical_patch_size', type=int, default=32, help='patch size of clinicalCT')
         parser.add_argument('--micro_patch_size', type=int, default=256, help='patch size of microCT')
-        parser.add_argument('--sampling_times', type=int, default=3, help='2^n times of upsampling from clinicalCT to microCT') # 决定了是几倍的SR 比如说3就是2^3=8倍
+        #parser.add_argument('--sampling_times', type=int, default=3, help='2^n times of upsampling from clinicalCT to microCT') # 决定了是几倍的SR 比如说3就是2^3=8倍
+        parser.add_argument('--sampling_times', type=int, default=1,
+                    help='2^n times of upsampling from clinicalCT to microCT')
         parser.add_argument('--maskdatafolder', type=str, default='/homes/tzheng/CTdata/CTMicroNUrespsurg/Mask')
         parser.add_argument('--code_channel', type=int, default=128)
         parser.add_argument('--encoder_path', type=str, default='/homes/tzheng/Mypythonfiles/alphaGAN-master/alphagan-results/e-epoch-100.pth', help='path of the alpha-GAN encoder')

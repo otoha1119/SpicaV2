@@ -1,72 +1,115 @@
 # -*- coding: utf8 -*-
-"""General-purpose training script for SR-CycleGAN
+"""General-purpose training script for SR-CycleGAN (TensorBoard + tqdm, optional clean runs)"""
 
-This script works for various settings of SR-CycleGAN, including:
-    - SR-CycleGAN for 8x SR: set --model medical_cycle_gan
-    - SR-CycleGAN for 4x SR: set --model medical_cycle_ganx4
-    
-Example:
-    Train a CycleGAN model:
-        python train.py --dataroot ./datasets/maps --name maps_cyclegan
-    
-See options/base_options.py and options/train_options.py for more training options.
-"""
 import os
+import shutil
 import time
+from tqdm import tqdm
+
 from options.train_options import TrainOptions
 from data import create_dataset
 from models import create_model
-from util.visualizer import Visualizer
-import pdb
+
+# HTML を継続して残したい場合（従来の web 出力）
+from util.visualizer import Visualizer as HtmlVisualizer
+# TensorBoard
+from util.visualizer2 import Visualizer2 as TBVisualizer
+
+
+def maybe_reset_logs(opt):
+    """
+    実行前にログをリセットしたい場合:
+      - 環境変数 RESET_CHECKPOINTS=1 で runs/ を削除
+      - 環境変数 RESET_HTML=1        で web/ も削除
+    """
+    base = os.path.join(opt.checkpoints_dir, opt.name)
+    runs_dir = os.path.join(base, "runs")
+    web_dir = os.path.join(base, "web")
+
+    if os.environ.get("RESET_CHECKPOINTS", "0") == "1":
+        shutil.rmtree(runs_dir, ignore_errors=True)
+        os.makedirs(runs_dir, exist_ok=True)
+        print(f"[INFO] Cleaned TensorBoard runs: {runs_dir}")
+
+    if os.environ.get("RESET_HTML", "0") == "1":
+        shutil.rmtree(web_dir, ignore_errors=True)
+        print(f"[INFO] Cleaned HTML dir: {web_dir}")
+
 
 if __name__ == '__main__':
-    opt = TrainOptions().parse()   # get training options
-    dataset = create_dataset(opt)  # create a dataset given opt.dataset_mode and other options
-    dataset_size = len(dataset)    # get the number of images in the dataset.
-    
-    model = create_model(opt)      # create a model given opt.model and other options
-    model.setup(opt)               # regular setup: load and print networks; create schedulers
-    
-    visualizer = Visualizer(opt)   # create a visualizer that display/save images and plots
-    total_iters = 0                # the total number of training iterations
+    # 1) オプション & データセット
+    opt = TrainOptions().parse()
+    maybe_reset_logs(opt)
 
-    for epoch in range(opt.epoch_count, opt.niter + opt.niter_decay + 1):    # outer loop for different epochs; we save the model by <epoch_count>, <epoch_count>+<save_latest_freq>
-        epoch_start_time = time.time()  # timer for entire epoch
-        iter_data_time = time.time()    # timer for data loading per iteration
-        epoch_iter = 0                  # the number of training iterations in current epoch, reset to 0 every epoch
+    dataset = create_dataset(opt)
+    dataset_size = len(dataset)
 
-        for i, data in enumerate(dataset):  # inner loop within one epoch 把每个图像都拿出来. i是序号，data是数据. 到这一步才开始调用UnalignedDataset里面的
-            iter_start_time = time.time()  # timer for computation per iteration
-            if total_iters % opt.print_freq == 0:
-                t_data = iter_start_time - iter_data_time
-            visualizer.reset()
-            total_iters += opt.batch_size
-            epoch_iter += opt.batch_size
-            model.set_input(data)         # unpack data from dataset and apply preprocessing
-            model.optimize_parameters(epoch)   # calculate loss functions, get gradients, update network weights
+    # 2) モデル & 可視化
+    model = create_model(opt)
+    model.setup(opt)
 
-            if total_iters % opt.display_freq == 0:   # display images on visdom and save images to a HTML file
-                save_result = total_iters % opt.update_html_freq == 0
-                model.compute_visuals()
-                visualizer.display_current_results(model.get_current_visuals(), epoch, save_result)
+    # 従来 HTML（checkpoints/<name>/web）も残す
+    visualizer_html = HtmlVisualizer(opt)
+    # TensorBoard
+    visualizer_tb = TBVisualizer(opt)
 
-            if total_iters % opt.print_freq == 0:    #print training losses and save logging information to the disk
-                losses = model.get_current_losses()
-                t_comp = (time.time() - iter_start_time) / opt.batch_size
-                visualizer.print_current_losses(epoch, epoch_iter, losses, t_comp, t_data)
-                if opt.display_id > 0:
-                    visualizer.plot_current_losses(epoch, float(epoch_iter) / dataset_size, losses)
+    total_iters = 0  # 累積ステップ（TensorBoard の step）
 
-            if total_iters % opt.save_latest_freq == 0:   # cache our latest model every <save_latest_freq> iterations
-                print('saving the latest model (epoch %d, total_iters %d)' % (epoch, total_iters))
-                save_suffix = 'iter_%d' % total_iters if opt.save_by_iter else 'latest'
-                model.save_networks(save_suffix)
+    # 3) エポックループ
+    for epoch in range(opt.epoch_count, opt.niter + opt.niter_decay + 1):
+        epoch_start_time = time.time()
+        iter_data_time = time.time()
+        epoch_iter = 0
 
-            iter_data_time = time.time()
-        if epoch % opt.save_epoch_freq == 0:              # cache our model every <save_epoch_freq> epochs
-            print('saving the model at the end of epoch %d, iters %d' % (epoch, total_iters))
+        with tqdm(total=dataset_size, desc=f"Epoch {epoch}/{opt.niter + opt.niter_decay}", unit="it") as pbar:
+            for i, data in enumerate(dataset):
+                iter_start_time = time.time()
+                if total_iters % opt.print_freq == 0:
+                    t_data = iter_start_time - iter_data_time
+
+                # 学習ステップ
+                model.set_input(data)
+                model.optimize_parameters(epoch)
+
+                total_iters += opt.batch_size
+                epoch_iter += opt.batch_size
+                pbar.update(opt.batch_size)
+
+                # 画像（HTML + TensorBoard）
+                if total_iters % opt.display_freq == 0:
+                    save_result = (total_iters % opt.update_html_freq == 0)
+                    model.compute_visuals()
+                    visuals = model.get_current_visuals()
+
+                    # HTML（従来通り）
+                    visualizer_html.display_current_results(visuals, epoch, save_result)
+                    # TensorBoard（新）
+                    visualizer_tb.display_current_results(visuals, epoch, total_iters)
+
+                # 損失（TensorBoard）
+                if total_iters % opt.print_freq == 0:
+                    losses = model.get_current_losses()
+                    # tqdm のステータスにも軽く出す
+                    loss_text = " ".join([f"{k}:{float(v):.3f}" for k, v in losses.items()])
+                    pbar.set_postfix_str(loss_text, refresh=False)
+                    # TensorBoard に記録
+                    visualizer_tb.log_losses(losses, total_iters)
+
+                # 途中セーブ
+                if total_iters % opt.save_latest_freq == 0:
+                    print(f'saving the latest model (epoch {epoch}, total_iters {total_iters})')
+                    save_suffix = f'iter_{total_iters}' if opt.save_by_iter else 'latest'
+                    model.save_networks(save_suffix)
+
+                iter_data_time = time.time()
+
+        # エポック終端セーブ
+        if epoch % opt.save_epoch_freq == 0:
             model.save_networks('latest')
             model.save_networks(epoch)
 
-        print('End of epoch %d / %d \t Time Taken: %d sec' % (epoch, opt.niter + opt.niter_decay, time.time() - epoch_start_time))
-        model.update_learning_rate()                     # update learning rates at the end of every epoch.
+        print(f'End of epoch {epoch} / {opt.niter + opt.niter_decay} \t Time Taken: {int(time.time() - epoch_start_time)} sec')
+        model.update_learning_rate()
+
+    # 終了処理
+    visualizer_tb.close()

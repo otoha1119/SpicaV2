@@ -1,35 +1,52 @@
-scikit-learn>=1.1.1
-seaborn>=0.11.2
-tqdm>=4.64.0
-#matplotlib>=3.5.2
-notebook>=6.4.12
-visdom>=0.2.3
-torchinfo>=1.8.0
-h5py>=3.7.0
+# ================================
+# PyTorch (CPU)
+# Align major versions with GPU env for compatibility
+# ================================
+torch>=2.0.0
+torchvision>=0.15.1
 
-
-pydicom
-
-torch>=1.13.1       # CPU版 PyTorch
-torchvision>=0.14.1
-#numpy>=1.23.0
-
-einops==0.6.0
-matplotlib==3.6.2
+# ================================
+# 基本必須ライブラリ
+# ================================
 numpy==1.23.4
 Pillow==9.3.0
-
+matplotlib==3.6.2
 pandas
-japanize-matplotlib
-jupyter
-openpyxl
-opencv-python
-pillow
-ipython
-pylibjpeg
+scikit-learn>=1.1.1
+scikit-image>=0.19.0
+seaborn>=0.11.2
+tqdm>=4.64.0
+h5py>=3.7.0
 
+# ================================
+# PyTorch 拡張
+# ================================
+einops==0.6.0
+torchinfo>=1.8.0
+torchmetrics==0.7.0
+pytorch_lightning>=1.5.0,<2.0.0
+monai==0.9.1
+
+# ================================
+# 可視化・補助
+# ================================
+dominate>=2.6.0
+visdom>=0.2.3
+japanize-matplotlib
 tensorboard>=2.12.0
 
-monai==0.9.1
-pytorch_lightning==1.5.0,<2.0.0
-torchmetrics==0.7.0
+# ================================
+# Notebook 環境
+# ================================
+notebook>=6.4.12
+jupyter
+ipython
+openpyxl
+
+# ================================
+# 画像処理関連
+# ================================
+opencv-python-headless>=4.8.0
+pylibjpeg
+pydicom
+nibabel>=5.0.0

@@ -14,13 +14,16 @@ services:
     ports:
       - '50002:8888'  # Jupyter標準ポート8888に修正
       - '8097:8097'   # Visdom用
+      - '6006:6006'   # TensorBoard用
 
     volumes:
       - ../:/workspace
       - ${DATASET_PATH}:/workspace/DataSet
 
     working_dir: /workspace
-    command: bash -c "jupyter notebook --allow-root --ip=0.0.0.0 --port=8888 --no-browser"
+    command: >
+      jupyter notebook --allow-root --ip=0.0.0.0 --port=8888 --no-browser
+
 
     runtime: nvidia                   # GPU ランタイム
     deploy:

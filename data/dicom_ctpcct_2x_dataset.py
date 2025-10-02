@@ -94,7 +94,7 @@ class DicomCtpcct2xDataset(BaseDataset):
         # Dataset length (must be INT)
         self._len: int = int(self.epoch_size) if self.epoch_size > 0 else max(len(self.lr_slices), len(self.hr_slices))
         
-        print(f"[DEBUG] dataset length = {len(self)} (type: {type(self._len)})")
+        #print(f"[DEBUG] dataset length = {len(self)} (type: {type(self._len)})")
         
 
 
@@ -136,7 +136,7 @@ class DicomCtpcct2xDataset(BaseDataset):
     # ---------- PyTorch Dataset API ----------
     def __len__(self) -> int:
         # Always return INT
-        print("[DEBUG] __len__ called in DicomCtpcct2xDataset")
+        #print("[DEBUG] __len__ called in DicomCtpcct2xDataset")
         return int(self._len)
 
     def __getitem__(self, index: int) -> Dict[str, Any]:

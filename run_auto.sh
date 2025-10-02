@@ -1,4 +1,7 @@
 #!/bin/bash
+# ./run_auto.sh
+
+# chmod +x run_auto.sh 
 set -e
 
 echo "=== 依存関係をインストールします ==="
@@ -7,6 +10,8 @@ echo "=== 依存関係をインストールします ==="
 
 # pip install --upgrade pip
 # pip install -r requirements.txt
+# python -m pip install nibabel
+
 echo "=== 依存関係インストール完了 ==="
 
 echo "=== 学習を開始します ==="
@@ -25,4 +30,5 @@ python train.py --dataroot /workspace/DataSet/ImageCAS \
                 --num_threads 4 \
                 --fast_scan \
                 --limit_per_patient 0 \
-                --verbose
+                #--verbose \
+                --sampling_times 1
