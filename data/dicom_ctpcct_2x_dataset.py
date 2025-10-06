@@ -24,36 +24,7 @@ class DicomCtpcct2xDataset(BaseDataset):
 
     @staticmethod
     def modify_commandline_options(parser, is_train):
-        # せって項目一応保険で置いておく，optionで全て定義できているはず
-        # # Roots
-        # parser.add_argument('--lr_root', type=str, default='/workspace/DataSet/ImageCAS',
-        #                     help='Root directory for LR DICOM tree (patients as subdirs).')
-        # parser.add_argument('--hr_root', type=str, default='/workspace/DataSet/photonCT/PhotonCT1024v2',
-        #                     help='Root directory for HR DICOM tree (patients as subdirs).')
-
-        # # Patch sizes (2x SR: e.g., LR=98, HR=196)
-        # parser.add_argument('--lr_patch', type=int, default=98, help='LR patch size (pixels).')
-        # parser.add_argument('--hr_patch', type=int, default=196, help='HR patch size (pixels).')
-
-        # # Sampling balance
-        # parser.add_argument('--hr_oversample_ratio', type=float, default=1.0,
-        #                     help='>1.0 increases probability of sampling HR slices (unpaired).')
-
-        # # Body mask options (OFF by default)
-        # parser.add_argument('--use_body_mask', action='store_true',
-        #                     help='Enable body mask and require minimum body coverage in crops.')
-        # parser.add_argument('--body_thresh_norm', type=float, default=0.1,
-        #                     help='Threshold in normalized scale for body mask.')
-        # parser.add_argument('--min_body_coverage', type=float, default=0.3,
-        #                     help='Required fraction of body pixels inside a crop when mask enabled.')
-
-        # # Epoch size override (optional)
-        # parser.add_argument('--epoch_size', type=int, default=0,
-        #                     help='If >0, overrides dataset length per epoch (int).')
-        # parser.add_argument('--fast_scan', action='store_true',
-        #                     help='Speed up scanning: skip per-file DICOM header reads; sort by filename only.')
-
-
+       
         return parser
 
     def __init__(self, opt):
