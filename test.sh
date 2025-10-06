@@ -1,3 +1,5 @@
+pip install pytorch-ssim
+
 python medicaltest_dicom.py \
   --dataset_mode dicom_ctpcct_2x_test \
   --model medical_cycle_gan \
