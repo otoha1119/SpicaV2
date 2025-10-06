@@ -39,6 +39,10 @@ def maybe_reset_logs(opt):
 if __name__ == '__main__':
     # 1) オプション & データセット
     opt = TrainOptions().parse() #オプションのパース
+    print(f"[INFO] scale={opt.scale}, sampling_times={opt.sampling_times}, "
+      f"lr_patch={opt.lr_patch}, hr_patch={opt.hr_patch}")
+
+
     maybe_reset_logs(opt) #上記関数にてoptionログを削除
 
     dataset = create_dataset(opt)

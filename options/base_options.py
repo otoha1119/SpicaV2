@@ -17,6 +17,8 @@ class BaseOptions():
 
     def initialize(self, parser):
         """Define the common options that are used in both training and test."""
+        parser.add_argument('--phase', type=str, default='train', help='train, val, test, etc')
+
         # basic parameters
         parser.add_argument('--dataroot', type=str, default='/', help='path to images (should have subfolders trainA, trainB, valA, valB, etc)')
         parser.add_argument('--name', type=str, default='experiment_name', help='name of the experiment. It decides where to store samples and models')
@@ -153,6 +155,8 @@ class BaseOptions():
             if int(opt.hr_patch) != expected:
                 print(f"[WARN] hr_patch ({opt.hr_patch}) != lr_patch*scale ({expected}); adjusting to {expected}")
                 opt.hr_patch = expected
+        
+
 
         return self.opt
 

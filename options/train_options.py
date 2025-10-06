@@ -4,9 +4,25 @@ from .base_options import BaseOptions
 
 class TrainOptions(BaseOptions):
     def initialize(self, parser):
-        parser = BaseOptions.initialize(self, parser)
+        
+        parser.add_argument('--sampling_times', type=int, default=1,
+                    help='2^n times of upsampling; default=1 → 2x')
 
-        # ---- (残す) 可視化/保存/学習系 基本項目 ----
+        parser.add_argument('--pool_size', type=int, default=50,
+                    help='the size of image buffer that stores previously generated images')
+
+        parser = BaseOptions.initialize(self, parser)
+        
+        # 可視化(Visdom/HTML)まわり
+        parser.add_argument('--display_id', type=int, default=0)
+        parser.add_argument('--display_port', type=int, default=8097)
+        parser.add_argument('--display_server', type=str, default='http://localhost')
+        parser.add_argument('--display_env', type=str, default='main')
+        parser.add_argument('--display_ncols', type=int, default=4)
+        parser.add_argument('--update_html_freq', type=int, default=1000)
+        parser.add_argument('--no_html', action='store_true')
+
+        # ---- 可視化/保存/学習系 基本項目 ----
         parser.add_argument('--display_freq', type=int, default=400)
         parser.add_argument('--print_freq', type=int, default=100)
         parser.add_argument('--save_latest_freq', type=int, default=5000)
@@ -58,11 +74,4 @@ class TrainOptions(BaseOptions):
 # 例: BaseOptions.parse() の末尾 self.opt を返す直前など
 # (train/test 両方で整合したいならここに置くのが楽)
 
-# --- derive hr_patch if needed, and validate ---
-if getattr(opt, 'hr_patch', 0) in (0, None):
-    opt.hr_patch = int(opt.lr_patch) * int(getattr(opt, 'scale', 2))
 
-expected = int(opt.lr_patch) * int(getattr(opt, 'scale', 2))
-if int(opt.hr_patch) != expected:
-    print(f"[WARN] hr_patch ({opt.hr_patch}) != lr_patch*scale ({expected}); adjusting to {expected}")
-    opt.hr_patch = expected
