@@ -142,4 +142,19 @@ class BaseOptions():
             opt.device = "cpu"
 
         self.opt = opt
+
+        if hasattr(opt, 'lr_patch') and hasattr(opt, 'scale'):
+            # hr_patch 未指定(0/None)なら自動設定
+            if not getattr(opt, 'hr_patch', 0):
+                opt.hr_patch = int(opt.lr_patch) * int(getattr(opt, 'scale', 2))
+
+            # 整合チェック（ズレていれば補正）
+            expected = int(opt.lr_patch) * int(getattr(opt, 'scale', 2))
+            if int(opt.hr_patch) != expected:
+                print(f"[WARN] hr_patch ({opt.hr_patch}) != lr_patch*scale ({expected}); adjusting to {expected}")
+                opt.hr_patch = expected
+
         return self.opt
+
+
+
