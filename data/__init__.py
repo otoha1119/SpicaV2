@@ -1,42 +1,83 @@
+import pdb
+import os
+import importlib
 import torch.utils.data
 from data.base_dataset import BaseDataset
-from data import dicom_ctpcct_2x_dataset, dicom_ctpcct_2x_test_dataset
 
 def find_dataset_using_name(dataset_name):
-    if dataset_name == "dicom_ctpcct_2x":
-        return dicom_ctpcct_2x_dataset.DicomCtpcct2xDataset
-    elif dataset_name == "dicom_ctpcct_2x_test":
-        return dicom_ctpcct_2x_test_dataset.DicomCtpcct2xTestDataset
-    else:
-        raise NotImplementedError(f"Unknown dataset_mode: {dataset_name}")
+    
+    dataset_filename = "data." + dataset_name + "_dataset" #这个是定义引用模型路径。目前是unaligned_dataset
+    datasetlib = importlib.import_module(dataset_filename) #根据输入的dataset_filename来引用模型。比如说dataset_filename如果是aligned，那么就引用aligned_dataset.py
+    
+    dataset = None
+    target_dataset_name = dataset_name.replace('_', '') + 'dataset'
+    for name, cls in datasetlib.__dict__.items():  #__dict__是abc里面的方法，是路径。 items()是： dict.items()によって返されるオブジェクトは、ビューオブジェクトです
+        if name.lower() == target_dataset_name.lower() \
+           and issubclass(cls, BaseDataset): #因为自定义的dataset类都继承于BaseDataset类。这里是判断是不是dataset的子类. lower()是小文字变换
+            dataset = cls
+    
+    #print(name) #Image
+    #print(type(name)) <class 'str'>
+    #print(dataset.__mro__) #多重继承，继承自class abc.ABC和torch dataset.
+    #os._exit(0)
+
+    if dataset is None:
+        raise NotImplementedError("In %s.py, there should be a subclass of BaseDataset with class name that matches %s in lowercase." % (dataset_filename, target_dataset_name))
+
+    return dataset
+
 
 def get_option_setter(dataset_name):
+    """Return the static method <modify_commandline_options> of the dataset class."""
     dataset_class = find_dataset_using_name(dataset_name)
     return dataset_class.modify_commandline_options
 
+
 def create_dataset(opt):
-    return CustomDatasetDataLoader(opt)
+    """Create a dataset given the option.
+
+    This function wraps the class CustomDatasetDataLoader.
+        This is the main interface between this package and 'train.py'/'test.py'
+
+    Example:
+        >>> from data import create_dataset
+        >>> dataset = create_dataset(opt)
+    """
+    data_loader = CustomDatasetDataLoader(opt)
+    #print("created dataloader!")
+    dataset = data_loader.load_data() #实验证明，这一步只是返回一个初始化完成的CustomDatasetDataLoader对象，不是读数据
+    #print("created dataset!")
+    return dataset
 
 class CustomDatasetDataLoader():
+    """Wrapper class of Dataset class that performs multi-threaded data loading"""
     def __init__(self, opt):
+        """Initialize this class
+
+        Step 1: create a dataset instance given the name [dataset_mode]
+        Step 2: create a multi-threaded data loader.
+        """
         self.opt = opt
-        dataset_class = find_dataset_using_name(opt.dataset_mode)
-        self.dataset = dataset_class(opt)
+        dataset_class = find_dataset_using_name(opt.dataset_mode)  
+        self.dataset = dataset_class(opt) 
         print("dataset [%s] was created" % type(self.dataset).__name__)
         self.dataloader = torch.utils.data.DataLoader(
-            self.dataset,
+            self.dataset, 
             batch_size=opt.batch_size,
             shuffle=not opt.serial_batches,
             num_workers=int(opt.num_threads))
 
     def load_data(self):
         return self
-
+    
     def __len__(self):
+        """Return the number of data in the dataset"""
+        #print(type(self.dataset)) 
         return int(min(len(self.dataset), self.opt.max_dataset_size))
 
-    def __iter__(self):
+    def __iter__(self): 
+        """Return a batch of data"""
         for i, data in enumerate(self.dataloader):
-            if i * self.opt.batch_size >= self.opt.max_dataset_size:
-                break
+            #print("iter in CustomDatasetDataLoader")
+            if i * self.opt.batch_size >= self.opt.max_dataset_size: 
             yield data
