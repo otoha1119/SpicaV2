@@ -1,87 +1,68 @@
+# train_options.py  (抜粋／変更点のみ)
+
 from .base_options import BaseOptions
 
-
 class TrainOptions(BaseOptions):
-    """This class includes training options.
-
-    It also includes shared options defined in BaseOptions.
-    """
-
     def initialize(self, parser):
         parser = BaseOptions.initialize(self, parser)
-        # visdom and HTML visualization parameters
-        parser.add_argument('--display_freq', type=int, default=400, help='frequency of showing training results on screen')
-        parser.add_argument('--display_ncols', type=int, default=4, help='if positive, display all images in a single visdom web panel with certain number of images per row.')
-        parser.add_argument('--display_id', type=int, default=0, help='window id of the web display')
-        parser.add_argument('--display_server', type=str, default="http://localhost", help='visdom server of the web display')
-        parser.add_argument('--display_env', type=str, default='main', help='visdom display environment name (default is "main")')
-        parser.add_argument('--display_port', type=int, default=8097, help='visdom port of the web display')
-        parser.add_argument('--update_html_freq', type=int, default=1000, help='frequency of saving training results to html')
-        parser.add_argument('--print_freq', type=int, default=100, help='frequency of showing training results on console')
-        parser.add_argument('--no_html', action='store_true', help='do not save intermediate training results to [opt.checkpoints_dir]/[opt.name]/web/')
-        # network saving and loading parameters
-        parser.add_argument('--save_latest_freq', type=int, default=5000, help='frequency of saving the latest results')
-        parser.add_argument('--save_epoch_freq', type=int, default=1, help='frequency of saving checkpoints at the end of epochs')
-        parser.add_argument('--save_by_iter', action='store_true', help='whether saves model by iteration')
-        parser.add_argument('--continue_train', action='store_true', help='continue training: load the latest model')
-        parser.add_argument('--epoch_count', type=int, default=1, help='the starting epoch count, we save the model by <epoch_count>, <epoch_count>+<save_latest_freq>, ...')
-        parser.add_argument('--phase', type=str, default='train', help='train, val, test, etc')
-        # training parameters
-        parser.add_argument('--niter', type=int, default=100, help='# of iter at starting learning rate')
-        parser.add_argument('--niter_decay', type=int, default=100, help='# of iter to linearly decay learning rate to zero')
-        parser.add_argument('--beta1', type=float, default=0.5, help='momentum term of adam')
-        parser.add_argument('--lr', type=float, default=0.00001, help='initial learning rate for adam')
-        parser.add_argument('--gan_mode', type=str, default='lsgan', help='the type of GAN objective. [vanilla| lsgan | wgangp]. vanilla GAN loss is the cross-entropy objective used in the original GAN paper.')
-        parser.add_argument('--pool_size', type=int, default=50, help='the size of image buffer that stores previously generated images')
-        parser.add_argument('--lr_policy', type=str, default='linear', help='learning rate policy. [linear | step | plateau | cosine]')
-        parser.add_argument('--lr_decay_iters', type=int, default=50, help='multiply by a gamma every lr_decay_iters iterations') #现在的lr是 0.1
-        parser.add_argument('--A_patchs_num', type=int, default=10000, help='patch number of data A')
-        parser.add_argument('--B_patchs_num', type=int, default=10000, help='patch number of data B')
-        parser.add_argument('--A_patch_size', type=int, default=32, help='patch size of data A')
-        parser.add_argument('--B_patch_size', type=int, default=256, help='patch size of data B')
-        # my opintion
-        parser.add_argument('--clinical_folder', type=str, default='', help='floder of clinicalCT')
-        parser.add_argument('--micro_folder', type=str, default='', help='folder of microCT')
-        parser.add_argument('--all_clinical_paths', type=str, default=[ '/homes/tzheng/CTdata/CTMicroNUrespsurg/HE_matched/nulung014-4.nii.gz', 
-                                                                        '/homes/tzheng/CTdata/CTMicroNUrespsurg/HE_matched/nulung015-5.nii.gz',
-                                                                        '/homes/tzheng/CTdata/CTMicroNUrespsurg/HE_matched/nulung030.nii.gz',
-                                                                        '/homes/tzheng/CTdata/CTMicroNUrespsurg/HE_matched/nulung031.nii.gz', 
-                                                                        '/homes/tzheng/CTdata/CTMicroNUrespsurg/HE_matched/nulung050.nii.gz'
-                                                                        ], help='all clinical paths')
-        
-        parser.add_argument('--all_micro_paths', type=str, default=['/homes/tzheng/CTdata/CTMicroNUrespsurg/nii/nulung014/uCT/nulung014_027_000_cropped.nii.gz',
-                                                                    '/homes/tzheng/CTdata/CTMicroNUrespsurg/nii/nulung015/uCT/nulung015_034_001_cropped.nii.gz',
-                                                                    '/homes/tzheng/CTdata/CTMicroNUrespsurg/nii/nulung030/DICOM_nulung030_cb_004_zf_ringRem_med3_cropped.nii.gz',
-                                                                    '/homes/tzheng/CTdata/CTMicroNUrespsurg/nii/nulung031/uCT/DICOM_nulung031_cb_003_zf_ringRem_med3_cropped.nii.gz',
-                                                                    '/homes/tzheng/CTdata/CTMicroNUrespsurg/nii/nulung050/nulung050_053_000_cropped.nii.gz'
-                                                                    ], help='all micro paths')
-        
-        parser.add_argument('--all_full_clinical_paths', type=str, default=['/homes/tzheng/CTdata/CTMicroNUrespsurg/cct/nulung015-5.nii.gz',
-                                                                            ], help='all micro paths')
-        '''
-        '/homes/tzheng/CTdata/CTMicroNUrespsurg/cct/nulung030.nii.gz',
-                                                                            '/homes/tzheng/CTdata/CTMicroNUrespsurg/cct/nulung031.512.nii.gz',
-                                                                            '/homes/tzheng/CTdata/CTMicroNUrespsurg/cct/nulung014-4.nii.gz',
-                                                                            '/homes/tzheng/CTdata/CTMicroNUrespsurg/cct/nulung050.nii.gz'
-        '''
-        parser.add_argument('--all_registrated_clinical_paths', type=str, default=['/homes/tzheng/CTdata/Hatakoshi_registration_forAlphaGAN/CT_image_normalized_cropped_fit_with_uCT_reso.nii.gz',
-                                                                                ], help='all registrated clinical paths')
 
-        parser.add_argument('--all_registrated_micro_paths', type=str, default=['/homes/tzheng/CTdata/Hatakoshi_registration_forAlphaGAN/outputResult.nii.gz',
-                                                                                ], help='all registrated micro paths')
-        parser.add_argument('--batch_num', type=int, default=2000, help='the batch num')
-        # parser.add_argument('--clinical_patch_size', type=int, default=32, help='patch size of clinicalCT')
-        # parser.add_argument('--micro_patch_size', type=int, default=256, help='patch size of microCT')
-        # JMI rebuttal: adjust patch size -- and changing dataset size is
-        parser.add_argument('--clinical_patch_size', type=int, default=32, help='patch size of clinicalCT')
-        parser.add_argument('--micro_patch_size', type=int, default=256, help='patch size of microCT')
-        #parser.add_argument('--sampling_times', type=int, default=3, help='2^n times of upsampling from clinicalCT to microCT') # 决定了是几倍的SR 比如说3就是2^3=8倍
-        parser.add_argument('--sampling_times', type=int, default=1,
-                    help='2^n times of upsampling from clinicalCT to microCT')
-        parser.add_argument('--maskdatafolder', type=str, default='/homes/tzheng/CTdata/CTMicroNUrespsurg/Mask')
-        parser.add_argument('--code_channel', type=int, default=128)
-        parser.add_argument('--encoder_path', type=str, default='/homes/tzheng/Mypythonfiles/alphaGAN-master/alphagan-results/e-epoch-100.pth', help='path of the alpha-GAN encoder')
-        parser.add_argument('--num_samples', type=int, default=200, help='number of samples take from each clinical CT case')
+        # ---- (残す) 可視化/保存/学習系 基本項目 ----
+        parser.add_argument('--display_freq', type=int, default=400)
+        parser.add_argument('--print_freq', type=int, default=100)
+        parser.add_argument('--save_latest_freq', type=int, default=5000)
+        parser.add_argument('--save_epoch_freq', type=int, default=1)
+        parser.add_argument('--save_by_iter', action='store_true')
+        parser.add_argument('--continue_train', action='store_true')
+        parser.add_argument('--epoch_count', type=int, default=1)
+        parser.add_argument('--niter', type=int, default=100)
+        parser.add_argument('--niter_decay', type=int, default=100)
+        parser.add_argument('--beta1', type=float, default=0.5)
+        parser.add_argument('--lr', type=float, default=1e-5)
+        parser.add_argument('--gan_mode', type=str, default='lsgan')
+        parser.add_argument('--lr_policy', type=str, default='linear')
+        parser.add_argument('--lr_decay_iters', type=int, default=50)
 
+        # ====== ここから dataset 固有設定を「中央集約」 ======
+        # ルート（元々 dataset.modify_commandline_options にあった）
+        parser.add_argument('--lr_root', type=str, default='/workspace/DataSet/ImageCAS',
+                            help='Root directory for LR DICOM tree')
+        parser.add_argument('--hr_root', type=str, default='/workspace/DataSet/photonCT/PhotonCT1024v2',
+                            help='Root directory for HR DICOM tree')
+
+        # クロップ設定：単一ソース化（推奨：lr_patch + scale から hr_patch を導出）
+        parser.add_argument('--lr_patch', type=int, default=98, help='LR patch (pixels)')
+        parser.add_argument('--scale', type=int, default=2, choices=[2,4,8], help='SR scale factor')
+        parser.add_argument('--hr_patch', type=int, default=0,
+                            help='(optional) If 0, set to lr_patch*scale; if >0, must equal lr_patch*scale')
+
+        # サンプリング・エポック制御
+        parser.add_argument('--hr_oversample_ratio', type=float, default=1.0,
+                            help='>1.0 increases probability of sampling HR slices (unpaired)')
+        parser.add_argument('--epoch_size', type=int, default=0,
+                            help='If >0, overrides dataset length per epoch')
+        parser.add_argument('--fast_scan', action='store_true',
+                            help='Skip header reads; sort by filename only')
+
+        # ボディマスク（OFF が既定）
+        parser.add_argument('--use_body_mask', action='store_true')
+        parser.add_argument('--body_thresh_norm', type=float, default=0.1)
+        parser.add_argument('--min_body_coverage', type=float, default=0.3)
+
+        # ---- 以下、元の大量の専用パス等は削除/非推奨化 ----
+        # * all_*_paths / encoder_path / code_channel など研究固有のものは一旦撤去。
+        # * 必要になったら個別の実験で CLI から渡すか、別の config ファイルで管理。
         self.isTrain = True
         return parser
+
+
+# 例: BaseOptions.parse() の末尾 self.opt を返す直前など
+# (train/test 両方で整合したいならここに置くのが楽)
+
+# --- derive hr_patch if needed, and validate ---
+if getattr(opt, 'hr_patch', 0) in (0, None):
+    opt.hr_patch = int(opt.lr_patch) * int(getattr(opt, 'scale', 2))
+
+expected = int(opt.lr_patch) * int(getattr(opt, 'scale', 2))
+if int(opt.hr_patch) != expected:
+    print(f"[WARN] hr_patch ({opt.hr_patch}) != lr_patch*scale ({expected}); adjusting to {expected}")
+    opt.hr_patch = expected

@@ -38,8 +38,8 @@ def maybe_reset_logs(opt):
 
 if __name__ == '__main__':
     # 1) オプション & データセット
-    opt = TrainOptions().parse()
-    maybe_reset_logs(opt)
+    opt = TrainOptions().parse() #オプションのパース
+    maybe_reset_logs(opt) #上記関数にてoptionログを削除
 
     dataset = create_dataset(opt)
     dataset_size = len(dataset)
