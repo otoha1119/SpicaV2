@@ -1,7 +1,9 @@
-#!/bin/bash
+#実行コード
+# tensorboard --logdir checkpoints/SR_CycleGAN/runs --port 6006 --host 0.0.0.0
+# chmod +x run_auto.sh 
 # ./run_auto.sh
 
-# chmod +x run_auto.sh 
+
 set -e
 
 echo "=== 依存関係をインストールします ==="
