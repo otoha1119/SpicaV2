@@ -80,4 +80,5 @@ class CustomDatasetDataLoader():
         for i, data in enumerate(self.dataloader):
             #print("iter in CustomDatasetDataLoader")
             if i * self.opt.batch_size >= self.opt.max_dataset_size: 
+                break
             yield data
