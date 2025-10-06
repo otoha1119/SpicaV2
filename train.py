@@ -47,14 +47,15 @@ if __name__ == '__main__':
     maybe_reset_logs(opt) #上記関数にてoptionログを削除
 
     dataset = create_dataset(opt)
-    dataset_size = len(dataset)
+    dataset_size = len(dataset) #1epochあたりのデータ枚数
 
     # 2) モデル & 可視化
-    model = create_model(opt)
-    model.setup(opt)
+    model = create_model(opt) #モデルの生成(models/__init__.py)
+    model.setup(opt)          #継承元のbase_model.pyのsetup()を呼び出し(学習率スケジューラのセット，モデルのロード，ネットワーク構造の表示)
 
     # 従来 HTML（checkpoints/<name>/web）も残す
     visualizer_html = HtmlVisualizer(opt)
+
     # TensorBoard
     visualizer_tb = TBVisualizer(opt)
 

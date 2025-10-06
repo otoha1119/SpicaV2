@@ -62,7 +62,13 @@ def create_model(opt):
         >>> from models import create_model
         >>> model = create_model(opt)
     """
-    model = find_model_using_name(opt.model)
-    instance = model(opt)
+    model = find_model_using_name(opt.model) #modelのロード
+    
+    """
+    コンストラクタ(__init__(self, opt))の呼び出し
+    G,Dの生成,lossの準備,ネットワーク初期化
+    """
+    instance = model(opt) 
+      
     print("model [%s] was created" % type(instance).__name__)
     return instance
