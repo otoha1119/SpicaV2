@@ -40,7 +40,7 @@ class BaseOptions():
         parser.add_argument('--no_dropout', action='store_true', help='no dropout for the generator')
 
         # dataset parameters
-        parser.add_argument('--dataset_mode', type=str, default='medical_2D', help='[unaligned | aligned | single | medical_2D | dicom_ctpcct_2x | dicom_ctpcct_2x_test]')
+        parser.add_argument('--dataset_mode', type=str, default='dicom_ctpcct_2x', help='[dicom_ctpcct_2x | dicom_ctpcct_2x_test]')
         parser.add_argument('--direction', type=str, default='AtoB', help='AtoB or BtoA')
         parser.add_argument('--serial_batches', action='store_true', help='if true, takes images in order, otherwise randomly')
         parser.add_argument('--num_threads', default=4, type=int, help='# threads for loading data')

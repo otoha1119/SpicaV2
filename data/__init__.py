@@ -6,20 +6,17 @@ from data.base_dataset import BaseDataset
 
 def find_dataset_using_name(dataset_name):
     
-    dataset_filename = "data." + dataset_name + "_dataset" #这个是定义引用模型路径。目前是unaligned_dataset
-    datasetlib = importlib.import_module(dataset_filename) #根据输入的dataset_filename来引用模型。比如说dataset_filename如果是aligned，那么就引用aligned_dataset.py
+    dataset_filename = "data." + dataset_name + "_dataset" 
+    datasetlib = importlib.import_module(dataset_filename) 
     
     dataset = None
     target_dataset_name = dataset_name.replace('_', '') + 'dataset'
-    for name, cls in datasetlib.__dict__.items():  #__dict__是abc里面的方法，是路径。 items()是： dict.items()によって返されるオブジェクトは、ビューオブジェクトです
+    for name, cls in datasetlib.__dict__.items():  
         if name.lower() == target_dataset_name.lower() \
-           and issubclass(cls, BaseDataset): #因为自定义的dataset类都继承于BaseDataset类。这里是判断是不是dataset的子类. lower()是小文字变换
+           and issubclass(cls, BaseDataset): 
             dataset = cls
     
-    #print(name) #Image
-    #print(type(name)) <class 'str'>
-    #print(dataset.__mro__) #多重继承，继承自class abc.ABC和torch dataset.
-    #os._exit(0)
+   
 
     if dataset is None:
         raise NotImplementedError("In %s.py, there should be a subclass of BaseDataset with class name that matches %s in lowercase." % (dataset_filename, target_dataset_name))
@@ -45,7 +42,7 @@ def create_dataset(opt):
     """
     data_loader = CustomDatasetDataLoader(opt)
     #print("created dataloader!")
-    dataset = data_loader.load_data() #实验证明，这一步只是返回一个初始化完成的CustomDatasetDataLoader对象，不是读数据
+    dataset = data_loader.load_data()
     #print("created dataset!")
     return dataset
 
