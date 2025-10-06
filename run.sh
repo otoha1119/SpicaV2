@@ -1,1 +1,0 @@
-python3 train.py --name maps_clinical2micro --gpu_ids 1 --dataroot ./da
