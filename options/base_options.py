@@ -17,6 +17,8 @@ class BaseOptions():
 
     def initialize(self, parser):
         """Define the common options that are used in both training and test."""
+        parser.add_argument('--phase', type=str, default='train', help='train, val, test, etc')
+
         # basic parameters
         parser.add_argument('--dataroot', type=str, default='/', help='path to images (should have subfolders trainA, trainB, valA, valB, etc)')
         parser.add_argument('--name', type=str, default='experiment_name', help='name of the experiment. It decides where to store samples and models')
@@ -38,7 +40,7 @@ class BaseOptions():
         parser.add_argument('--no_dropout', action='store_true', help='no dropout for the generator')
 
         # dataset parameters
-        parser.add_argument('--dataset_mode', type=str, default='medical_2D', help='[unaligned | aligned | single | medical_2D | dicom_ctpcct_2x | dicom_ctpcct_2x_test]')
+        parser.add_argument('--dataset_mode', type=str, default='dicom_ctpcct_2x', help='[dicom_ctpcct_2x | dicom_ctpcct_2x_test]')
         parser.add_argument('--direction', type=str, default='AtoB', help='AtoB or BtoA')
         parser.add_argument('--serial_batches', action='store_true', help='if true, takes images in order, otherwise randomly')
         parser.add_argument('--num_threads', default=4, type=int, help='# threads for loading data')
@@ -142,4 +144,21 @@ class BaseOptions():
             opt.device = "cpu"
 
         self.opt = opt
+
+        if hasattr(opt, 'lr_patch') and hasattr(opt, 'scale'):
+            # hr_patch 未指定(0/None)なら自動設定
+            if not getattr(opt, 'hr_patch', 0):
+                opt.hr_patch = int(opt.lr_patch) * int(getattr(opt, 'scale', 2))
+
+            # 整合チェック（ズレていれば補正）
+            expected = int(opt.lr_patch) * int(getattr(opt, 'scale', 2))
+            if int(opt.hr_patch) != expected:
+                print(f"[WARN] hr_patch ({opt.hr_patch}) != lr_patch*scale ({expected}); adjusting to {expected}")
+                opt.hr_patch = expected
+        
+
+
         return self.opt
+
+
+

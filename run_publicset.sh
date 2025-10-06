@@ -1,1 +1,0 @@
-python3 medicalTrain_publicset.py --model medical_cycle_ganx4 --name maps_medical_cycleganx4 --gpu_ids 3 --dataroot ./da

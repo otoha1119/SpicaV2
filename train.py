@@ -38,18 +38,24 @@ def maybe_reset_logs(opt):
 
 if __name__ == '__main__':
     # 1) オプション & データセット
-    opt = TrainOptions().parse()
-    maybe_reset_logs(opt)
+    opt = TrainOptions().parse() #オプションを取得
 
-    dataset = create_dataset(opt)
-    dataset_size = len(dataset)
+    print(f"[INFO] scale={opt.scale}, sampling_times={opt.sampling_times}, "
+      f"lr_patch={opt.lr_patch}, hr_patch={opt.hr_patch}")
+
+
+    maybe_reset_logs(opt) #上記関数にてoptionログを削除
+
+    dataset = create_dataset(opt) #データセット作成
+    dataset_size = len(dataset) #1epochあたりのデータ枚数
 
     # 2) モデル & 可視化
-    model = create_model(opt)
-    model.setup(opt)
+    model = create_model(opt) #モデルの生成(models/__init__.py)
+    model.setup(opt)          #継承元のbase_model.pyのsetup()を呼び出し(学習率スケジューラのセット，モデルのロード，ネットワーク構造の表示)
 
     # 従来 HTML（checkpoints/<name>/web）も残す
     visualizer_html = HtmlVisualizer(opt)
+
     # TensorBoard
     visualizer_tb = TBVisualizer(opt)
 
@@ -57,23 +63,23 @@ if __name__ == '__main__':
 
     # 3) エポックループ
     for epoch in range(opt.epoch_count, opt.niter + opt.niter_decay + 1):
-        epoch_start_time = time.time()
-        iter_data_time = time.time()
-        epoch_iter = 0
+        epoch_start_time = time.time() #Epochの開始時間の記録
+        iter_data_time = time.time() #データ読み込み開始時刻の記録
+        epoch_iter = 0 #イテレーションカウンタ
 
-        with tqdm(total=dataset_size, desc=f"Epoch {epoch}/{opt.niter + opt.niter_decay}", unit="it") as pbar:
-            for i, data in enumerate(dataset):
-                iter_start_time = time.time()
-                if total_iters % opt.print_freq == 0:
-                    t_data = iter_start_time - iter_data_time
+        with tqdm(total=dataset_size, desc=f"Epoch {epoch}/{opt.niter + opt.niter_decay}", unit="it") as pbar: #tqdmのプログレスバー
+            for i, data in enumerate(dataset): #データ取り出し(データローダ)
+                iter_start_time = time.time() #イテレーション開始時刻の記録
+                if total_iters % opt.print_freq == 0: 
+                    t_data = iter_start_time - iter_data_time #イテレーション間の時間計測
 
                 # 学習ステップ
-                model.set_input(data)
-                model.optimize_parameters(epoch)
+                model.set_input(data) #dataをモデル対応に変換,バッチをGPUに搭載
+                model.optimize_parameters(epoch) #学習本体
 
-                total_iters += opt.batch_size
-                epoch_iter += opt.batch_size
-                pbar.update(opt.batch_size)
+                total_iters += opt.batch_size #累積イテレーションの更新
+                epoch_iter += opt.batch_size #エポック内イテレーションの更新
+                pbar.update(opt.batch_size) #tqdmのプログレスバー更新
 
                 # 画像（HTML + TensorBoard）
                 if total_iters % opt.display_freq == 0:
@@ -91,25 +97,25 @@ if __name__ == '__main__':
                     losses = model.get_current_losses()
                     # tqdm のステータスにも軽く出す
                     loss_text = " ".join([f"{k}:{float(v):.3f}" for k, v in losses.items()])
-                    pbar.set_postfix_str(loss_text, refresh=False)
+                    #pbar.set_postfix_str(loss_text, refresh=False)
                     # TensorBoard に記録
                     visualizer_tb.log_losses(losses, total_iters)
 
                 # 途中セーブ
                 if total_iters % opt.save_latest_freq == 0:
-                    print(f'saving the latest model (epoch {epoch}, total_iters {total_iters})')
+                    #print(f'saving the latest model (epoch {epoch}, total_iters {total_iters})')
                     save_suffix = f'iter_{total_iters}' if opt.save_by_iter else 'latest'
                     model.save_networks(save_suffix)
 
-                iter_data_time = time.time()
+                iter_data_time = time.time() #データ読み込み開始時刻の更新
 
         # エポック終端セーブ
-        if epoch % opt.save_epoch_freq == 0:
+        if epoch % opt.save_epoch_freq == 0: #何エポックごとに保存か
             model.save_networks('latest')
             model.save_networks(epoch)
 
         print(f'End of epoch {epoch} / {opt.niter + opt.niter_decay} \t Time Taken: {int(time.time() - epoch_start_time)} sec')
-        model.update_learning_rate()
+        model.update_learning_rate() #学習率更新
 
     # 終了処理
     visualizer_tb.close()
