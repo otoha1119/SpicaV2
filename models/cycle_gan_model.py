@@ -1,3 +1,5 @@
+#未使用ファイルだが参考に置いておく
+
 import torch
 import itertools
 import pytorch_ssim
