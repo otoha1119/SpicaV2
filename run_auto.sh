@@ -3,7 +3,7 @@
 # chmod +x run_auto.sh 
 # ./run_auto.sh
 
-
+pip install pytorch-msssim
 set -e
 
 echo "=== 依存関係をインストールします ==="
@@ -17,7 +17,7 @@ echo "=== 依存関係をインストールします ==="
 echo "=== 依存関係インストール完了 ==="
 
 echo "=== 学習を開始します ==="
-RESET_ALL=1 python train.py --dataroot /workspace/DataSet/ImageCAS \
+python train.py --dataroot /workspace/DataSet/ImageCAS \
                 --name SR_CycleGAN \
                 --model medical_cycle_gan \
                 --direction AtoB \
@@ -26,7 +26,7 @@ RESET_ALL=1 python train.py --dataroot /workspace/DataSet/ImageCAS \
                 --epoch 200 \
                 --niter 100 \
                 --niter_decay 100 \
-                --gpu_ids 0 \
+                --gpu_ids -1 \
                 --hr_root /workspace/DataSet/photonCT/PhotonCT1024v2 \
                 --lr_root /workspace/DataSet/ImageCAS \
                 --num_threads 4 \
