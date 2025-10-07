@@ -118,7 +118,7 @@ class Visualizer2:
         grid_top = vutils.make_grid(
             row_disp,
             nrow=len(self.top_row_names),
-            normalize=False
+            normalize=True
         )
         self.writer.add_image("00_TopRow/realA_fakeB_realB_fakeA", grid_top, global_step=step)
 
