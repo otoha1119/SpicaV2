@@ -17,24 +17,50 @@ from util.visualizer2 import Visualizer2 as TBVisualizer
 
 
 def maybe_reset_logs(opt):
-    """
-    実行前にログをリセットしたい場合:
-      - 環境変数 RESET_CHECKPOINTS=1 で runs/ を削除
-      - 環境変数 RESET_HTML=1        で web/ も削除
-    """
     base = os.path.join(opt.checkpoints_dir, opt.name)
     runs_dir = os.path.join(base, "runs")
-    web_dir = os.path.join(base, "web")
+    web_dir  = os.path.join(base, "web")
 
-    if os.environ.get("RESET_CHECKPOINTS", "0") == "1":
+    # CLI 優先、無ければ環境変数
+    reset_all    = getattr(opt, 'reset_all', False)    or os.environ.get("RESET_ALL", "0") == "1"
+    reset_runs   = getattr(opt, 'reset_runs', False)   or os.environ.get("RESET_RUNS", "0") == "1"
+    reset_html   = getattr(opt, 'reset_html', False)   or os.environ.get("RESET_HTML", "0") == "1"
+    reset_models = getattr(opt, 'reset_models', False) or os.environ.get("RESET_MODELS", "0") == "1"
+
+    if reset_all:
+        shutil.rmtree(base, ignore_errors=True)
+        os.makedirs(base, exist_ok=True)
+        print(f"[INFO] Cleaned ALL: {base}")
+        return
+
+    if reset_runs:
         shutil.rmtree(runs_dir, ignore_errors=True)
         os.makedirs(runs_dir, exist_ok=True)
         print(f"[INFO] Cleaned TensorBoard runs: {runs_dir}")
 
-    if os.environ.get("RESET_HTML", "0") == "1":
+    if reset_html:
         shutil.rmtree(web_dir, ignore_errors=True)
         print(f"[INFO] Cleaned HTML dir: {web_dir}")
 
+    if reset_models:
+        # *.pth や iter_* / latest などを削除（必要に応じてパターン追加）
+        from glob import glob
+        patterns = [
+            os.path.join(base, "*.pth"),
+            os.path.join(base, "*.pt"),
+            os.path.join(base, "iter_*"),
+            os.path.join(base, "latest*"),
+            os.path.join(base, "epoch_*"),
+            os.path.join(base, "loss_log.txt"),
+            os.path.join(base, "events.out.tfevents*"),
+        ]
+        for pat in patterns:
+            for p in glob(pat):
+                try:
+                    shutil.rmtree(p, ignore_errors=True) if os.path.isdir(p) else os.remove(p)
+                except Exception:
+                    pass
+        print(f"[INFO] Cleaned model checkpoints & logs under: {base}")
 
 if __name__ == '__main__':
     # 1) オプション & データセット
