@@ -5,7 +5,8 @@ from .base_model import BaseModel
 from . import networks
 from torch.nn import AvgPool2d
 from torch.nn import UpsamplingNearest2d, UpsamplingBilinear2d
-import pytorch_ssim
+#import pytorch_ssim
+from pytorch_msssim import SSIM
 import numpy as np
 import os
 import cv2

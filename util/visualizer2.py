@@ -108,15 +108,13 @@ class Visualizer2:
             row_imgs.append(t)
 
         row_batch = torch.cat(row_imgs, dim=0)  # [N,1,H,W]
-
-        # 値域を [-1,1] / [0,1] いずれでも正しく可視化できるように統一
-        row_disp = row_batch.clone().to(torch.float32)
+        # 値域統一: [-1,1] なら [0,1] へ
+        row_disp = row_batch.to(torch.float32)
         if row_disp.min().item() < 0.0:
-            # [-1,1] → [0,1]
             row_disp = (row_disp + 1.0) / 2.0
         row_disp = row_disp.clamp(0.0, 1.0)
 
-        # 個別の正規化はしない（contrast のバラつきを避ける）
+        # 個別正規化は使わない（コントラストがバラけるのを防ぐ）
         grid_top = vutils.make_grid(
             row_disp,
             nrow=len(self.top_row_names),
@@ -131,21 +129,19 @@ class Visualizer2:
                 continue
             if not isinstance(tensor, torch.Tensor):
                 continue
-
-            t = self._to_bchw(tensor)
-            t_disp = t.clone().to(torch.float32)
-            if t_disp.min().item() < 0.0:
-                # [-1,1] → [0,1]
-                t_disp = (t_disp + 1.0) / 2.0
-            t_disp = t_disp.clamp(0.0, 1.0)
+            t = self._to_bchw(tensor).to(torch.float32)
+            if t.min().item() < 0.0:
+                t = (t + 1.0) / 2.0
+            t = t.clamp(0.0, 1.0)
 
             grid = vutils.make_grid(
-                t_disp,
-                nrow=min(t_disp.shape[0], 8),
+                t,
+                nrow=min(t.shape[0], 8),
                 normalize=False
             )
             self.writer.add_image(f"10_AllImages/{name}", grid, global_step=step)
 
+    
     def log_losses(self, losses: Dict[str, float], step: int):
         """損失を TensorBoard に記録"""
         if not isinstance(losses, (dict, OrderedDict)):
