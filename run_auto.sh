@@ -17,7 +17,7 @@ echo "=== 依存関係をインストールします ==="
 echo "=== 依存関係インストール完了 ==="
 
 echo "=== 学習を開始します ==="
-python train.py --dataroot /workspace/DataSet/ImageCAS \
+RESET_ALL=1 python train.py --dataroot /workspace/DataSet/ImageCAS \
                 --name SR_CycleGAN \
                 --model medical_cycle_gan \
                 --direction AtoB \
