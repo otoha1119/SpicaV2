@@ -4,7 +4,7 @@
 
 pip install pytorch-ssim
 
-python medicaltest_dicom.py \
+python inference_single.py \
   --dataset_mode dicom_ctpcct_2x_test \
   --model medical_cycle_gan \
   --clinical2micronetG clinical_to_micro_resnet_9blocks \
