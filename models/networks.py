@@ -5,6 +5,11 @@ import functools
 from torch.optim import lr_scheduler
 # from torch.autograd._functions.utils import prepare_onnx_paddings
 from torchvision.transforms import *
+
+
+
+
+
 ###############################################################################
 # Helper Functions
 ###############################################################################
@@ -87,7 +92,7 @@ def init_weights(net, init_type='normal', init_gain=0.02):
             init.normal_(m.weight.data, 1.0, init_gain)
             init.constant_(m.bias.data, 0.0)
 
-    print('initialize network with %s' % init_type)
+    #print('initialize network with %s' % init_type)
     net.apply(init_func)  # apply the initialization function <init_func>
 
 def init_net(net, init_type='normal', init_gain=0.02, gpu_ids=[]):
@@ -1688,7 +1693,6 @@ class MicroCTEncoder(nn.Module):
         super(MicroCTEncoder, self).__init__()
         self.gpu = gpu
         assert input_size % 16 == 0, "input_size has to be a multiple of 16"
-
         # Convolutional modules
         conv = nn.Sequential()
         # 三次缩小 尺寸从256*256->32*32
