@@ -14,11 +14,11 @@ direction: AtoB
 display_winsize: 256
 epoch: 167 [default: 200]
 eval: False
-gpu_ids: -1 [default: 1]
+gpu_ids: 0 [default: 1]
 halves_pixel_spacing: True [default: False]
 init_gain: 0.02
 init_type: normal
-input_dicom: /workspace/IM_091.dcm [default: None]
+input_dicom: /dev/null [default: None]
 input_nc: 1
 isTrain: False [default: None]
 limit_per_patient: 0
@@ -44,7 +44,7 @@ norm: instance
 ntest: inf
 num_test: 50
 num_threads: 4
-output_dicom: /workspace/results/SR_2x.dcm [default: results/SR_2x.dcm]
+output_dicom: /dev/null [default: results/SR_2x.dcm]
 output_nc: 1
 pad_mod: 4
 phase: test

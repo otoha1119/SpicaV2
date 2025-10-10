@@ -3,7 +3,7 @@ set -euo pipefail
 
 IN_DIR="/workspace/DataSet/ImageCAS/001.ImgCast"
 STAMP="$(date +%Y%m%d-%H%M%S)"
-OUT_DIR="/workspace/results/001.ImgCast_SR2x_${STAMP}"
+OUT_DIR="/workspace/results/001.ImgCast"
 GPU_IDS="0"
 
 export INPUT_DIR="$IN_DIR"

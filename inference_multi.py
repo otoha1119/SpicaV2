@@ -244,9 +244,38 @@ def list_dicoms(root: str):
     return files
 
 def main():
-    # 基本オプションは TestOptions に任せる（学習時と同じ系統）
+    # ===== 1) 入出力ディレクトリ取得（まず環境変数を優先） =====
+    in_dir = os.environ.get("INPUT_DIR", None)
+    out_dir = os.environ.get("OUTPUT_DIR", None)
+
+    # ===== 2) argparse の必須(--input_dicom)回避のためのダミー注入 =====
+    import sys
+    argv_backup = list(sys.argv)
+    if "--input_dicom" not in sys.argv:
+        sys.argv += ["--input_dicom", "/dev/null"]
+    if "--output_dicom" not in sys.argv:
+        sys.argv += ["--output_dicom", "/dev/null"]
+
+    # CUDA が見えない/使えない場合は CPU にフォールバック
+    try:
+        has_cuda = torch.cuda.is_available() and torch.cuda.device_count() > 0
+    except Exception:
+        has_cuda = False
+    if not has_cuda:
+        if "--gpu_ids" in sys.argv:
+            gi = sys.argv.index("--gpu_ids")
+            if gi + 1 < len(sys.argv):
+                sys.argv[gi + 1] = "-1"
+        else:
+            sys.argv += ["--gpu_ids", "-1"]
+
+    # ===== 3) TestOptions をパース（ダミーのおかげで落ちない） =====
     opt = TestOptions().parse()
-    # 最小上書き
+
+    # パース後は argv を元に戻しておく（副作用防止）
+    sys.argv = argv_backup
+
+    # ===== 4) 実行時の最小上書き =====
     opt.num_threads = 0
     opt.batch_size = 1
     opt.serial_batches = True
@@ -255,30 +284,39 @@ def main():
     if not getattr(opt, "which_epoch", None):
         setattr(opt, "which_epoch", str(getattr(opt, "epoch", "latest")))
 
-    # 追加CLI（--input_dir/--output_dir）が TestOptions に無い場合は getattr で拾う
-    # ここでは環境変数 / 後述の test2.py から渡します
-    in_dir = os.environ.get("INPUT_DIR", None)
-    out_dir = os.environ.get("OUTPUT_DIR", None)
+    # TestOptions に --input_dir/--output_dir がある場合の保険（なければ環境変数を使う）
+    if not in_dir:
+        in_dir = getattr(opt, "input_dir", None)
+    if not out_dir:
+        out_dir = getattr(opt, "output_dir", None)
 
+    # 必須チェック
     if not in_dir or not out_dir:
-        raise SystemExit("ERROR: --input_dir と --output_dir を指定してください")
+        raise SystemExit("ERROR: 入出力ディレクトリが指定されていません。（INPUT_DIR / OUTPUT_DIR を設定してください）")
 
     os.makedirs(out_dir, exist_ok=True)
+    print(f"[INFO] Input dir: {in_dir}")
+    print(f"[INFO] Output dir: {out_dir}")
 
-    # モデル構築（1回だけ）
+    # ===== 5) モデルを1回だけ構築・重みロード =====
     model = build_model(opt)
 
-    # 対象 DICOM を列挙
+    # ===== 6) 入力ディレクトリ配下の DICOM を列挙 =====
     paths = list_dicoms(in_dir)
     if not paths:
         raise SystemExit(f"No DICOM files found under: {in_dir}")
 
-    # 変換ループ
+    # ===== 7) 推論ループ =====
     for ipath in paths:
         base = osp.splitext(osp.basename(ipath))[0]
         opath = osp.join(out_dir, f"{base}_SR2x.dcm")
         infer_one(model, opt, ipath, opath)
         print(f"[OK] {ipath} -> {opath}")
+
+    print(f"[DONE] All results saved under: {out_dir}")
+
+
+
 
 if __name__ == "__main__":
     main()
