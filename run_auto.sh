@@ -1,9 +1,10 @@
 #実行コード
 # tensorboard --logdir checkpoints/SR_CycleGAN/runs --port 6006 --host 0.0.0.0
-# chmod +x run_auto.sh 
-# ./run_auto.sh
-
-
+"""
+chmod +x run_auto.sh 
+./run_auto.sh
+"""
+pip install pytorch-msssim
 set -e
 
 echo "=== 依存関係をインストールします ==="
@@ -26,7 +27,7 @@ python train.py --dataroot /workspace/DataSet/ImageCAS \
                 --epoch 200 \
                 --niter 100 \
                 --niter_decay 100 \
-                --gpu_ids 0 \
+                --gpu_ids -1 \
                 --hr_root /workspace/DataSet/photonCT/PhotonCT1024v2 \
                 --lr_root /workspace/DataSet/ImageCAS \
                 --num_threads 4 \

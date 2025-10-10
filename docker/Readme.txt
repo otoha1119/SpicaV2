@@ -37,3 +37,20 @@ http://<コンテナのIPアドレス>:6006
 docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' Noctua
 
 
+.envファイルの内容のコピー
+# データファイルのパスを指定
+#######################################################################
+#  Git 追跡を一時的に外す／戻すコマンド
+#
+#  # 追跡を外す       : git update-index --assume-unchanged docker/.env
+#  # 追跡を再開する   : git update-index --no-assume-unchanged docker/.env
+#
+#  ※ 上記はターミナルで実行してください。ここに書いても harmless です。
+#######################################################################
+
+# docker/.env
+# Mac
+DATASET_PATH=/Volumes/OTO-SSD/SeniorThesis/DataSet
+# Windows
+# DATASET_PATH=D:/DataSet
+

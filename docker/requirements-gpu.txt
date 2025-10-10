@@ -55,3 +55,5 @@ opencv-python-headless>=4.8.0
 pylibjpeg
 pydicom
 nibabel>=5.0.0
+
+pytorch-msssim>=0.2.1

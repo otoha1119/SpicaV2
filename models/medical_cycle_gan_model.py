@@ -5,7 +5,8 @@ from .base_model import BaseModel
 from . import networks
 from torch.nn import AvgPool2d
 from torch.nn import UpsamplingNearest2d, UpsamplingBilinear2d
-import pytorch_ssim
+#import pytorch_ssim
+from pytorch_msssim import SSIM
 import numpy as np
 import os
 import cv2
@@ -82,6 +83,11 @@ class MedicalCycleGANModel(BaseModel):
         Parameters:
             opt (Option class)-- stores all the experiment flags; needs to be a subclass of BaseOptions
         """
+
+        # 画像が Tanh 出力で [-1,1] 範囲なら data_range=2.0 が楽
+        # CT が 1ch の前提なら channel=1（RGB なら 3）
+        self.ssim = SSIM(data_range=2.0, channel=1)
+
         BaseModel.__init__(self, opt)
         # specify the training losses you want to print out. The training/test scripts will call <BaseModel.get_current_losses>
         self.loss_names = ['D_A', 'G_A', 'cycle_A', 'idt_A', 'D_B', 'G_B', 'cycle_B', 'idt_B', 'downsample', 'upsample', 'clinical_ssim', 'micro_ssim']
@@ -328,13 +334,15 @@ class MedicalCycleGANModel(BaseModel):
             #m = AvgPool2d(8, stride=8)
             self.downsample_fake_B = m(self.fake_B)
             # ここから変更
-            ssim_loss = pytorch_ssim.SSIM()   # ← これを追加
             if self.downsample_fake_B.shape[-2:] != self.real_A.shape[-2:]:
-                self.downsample_fake_B = F.interpolate(self.downsample_fake_B,
-                                                    size=self.real_A.shape[-2:],
-                                                    mode='bilinear',
-                                                    align_corners=False)
-            self.loss_clinical_ssim = (1 - ssim_loss(self.downsample_fake_B, self.real_A)) * self.opt.lambda_clinical_ssim
+                self.downsample_fake_B = F.interpolate(
+                    self.downsample_fake_B,
+                    size=self.real_A.shape[-2:],
+                    mode='bilinear',
+                    align_corners=False
+                )
+            ssim_val = self.ssim(self.downsample_fake_B, self.real_A)  # [-1,1] 入力OK（data_range=2.0）
+            self.loss_clinical_ssim = (1.0 - ssim_val) * self.opt.lambda_clinical_ssim
         else:
             self.loss_clinical_ssim  = 0
 
@@ -343,13 +351,17 @@ class MedicalCycleGANModel(BaseModel):
             #n = UpsamplingNearest2d(scale_factor=8)
             self.upsample_fake_A = n(self.fake_A)
             # ここから変更
-            ssim_loss = pytorch_ssim.SSIM()   # ← これを追加
+            # すでに __init__ で self.ssim を作っているので使いまわす
             if self.upsample_fake_A.shape[-2:] != self.real_B.shape[-2:]:
-                self.upsample_fake_A = F.interpolate(self.upsample_fake_A,
-                                                    size=self.real_B.shape[-2:],
-                                                    mode='bilinear',
-                                                    align_corners=False)
-            self.loss_micro_ssim = (1 - ssim_loss(self.upsample_fake_A, self.real_B)) * self.opt.lambda_micro_ssim
+                self.upsample_fake_A = F.interpolate(
+                    self.upsample_fake_A,
+                    size=self.real_B.shape[-2:],
+                    mode='bilinear',
+                    align_corners=False
+                )
+            ssim_val = self.ssim(self.upsample_fake_A, self.real_B)  # [-1,1] 入力OK（data_range=2.0）
+            self.loss_micro_ssim = (1.0 - ssim_val) * self.opt.lambda_micro_ssim
+
         else:
             self.loss_micro_ssim = 0
 

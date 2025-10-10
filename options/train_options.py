@@ -12,6 +12,12 @@ class TrainOptions(BaseOptions):
                     help='the size of image buffer that stores previously generated images')
 
         parser = BaseOptions.initialize(self, parser)
+
+        #RESET系オプション
+        parser.add_argument('--reset_all', action='store_true',help='checkpoints/<name> を丸ごと初期化してから実行')
+        parser.add_argument('--reset_runs', action='store_true', help='runs/ (TensorBoard) を初期化')
+        parser.add_argument('--reset_html', action='store_true',help='web/ (HTML出力) を初期化')
+        parser.add_argument('--reset_models', action='store_true',help='*.pth や iter_*/latest などモデル系も削除')
         
         # 可視化(Visdom/HTML)まわり
         parser.add_argument('--display_id', type=int, default=0)

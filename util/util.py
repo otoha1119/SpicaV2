@@ -7,26 +7,30 @@ import os
 
 
 def tensor2im(input_image, imtype=np.uint8):
-    #目前输入是[2, 1, 256, 256]
-    """"Converts a Tensor array into a numpy image array.
-
-    Parameters:
-        input_image (tensor) --  the input image tensor array
-        imtype (type)        --  the desired type of the converted numpy array
-    """
+    """Converts a Tensor array into a numpy image array."""
     if not isinstance(input_image, np.ndarray):
-        if isinstance(input_image, torch.Tensor):  # get the data from a variable
-            image_tensor = input_image.data
+        # PyTorch Tensor → numpy
+        if isinstance(input_image, torch.Tensor):
+            image_tensor = input_image.detach()
         else:
             return input_image
-        image_numpy = image_tensor[0].cpu().float().numpy()  # convert it into a numpy array
-        if image_numpy.shape[0] == 1:  # grayscale to RGB
+        image_numpy = image_tensor[0].cpu().float().numpy()
+        # 1ch → 3ch
+        if image_numpy.ndim == 3 and image_numpy.shape[0] == 1:
             image_numpy = np.tile(image_numpy, (3, 1, 1))
-        image_numpy = (np.transpose(image_numpy, (1, 2, 0)) + 1) / 2.0 * 255.0  # post-processing: tranpose and scaling
-    else:  # if it is a numpy array, do nothing
+        # C,H,W → H,W,C
+        image_numpy = np.transpose(image_numpy, (1, 2, 0))
+        # 画像の値域を判定して逆正規化
+        min_val = float(image_numpy.min())
+        if min_val < 0.0:
+            # [-1,1] の場合は (x+1)/2 で 0〜1 にマッピング
+            image_numpy = (image_numpy + 1.0) / 2.0
+        # [0,1] 域に丸めて 0〜255 にスケーリング
+        image_numpy = np.clip(image_numpy, 0.0, 1.0) * 255.0
+    else:
         image_numpy = input_image
+        
     return image_numpy.astype(imtype)
-
 
 def diagnose_network(net, name='network'):
     """Calculate and print the mean of average absolute(gradients)

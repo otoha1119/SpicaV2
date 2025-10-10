@@ -15,26 +15,32 @@ from util.visualizer import Visualizer as HtmlVisualizer
 # TensorBoard
 from util.visualizer2 import Visualizer2 as TBVisualizer
 
-
 def maybe_reset_logs(opt):
     """
-    実行前にログをリセットしたい場合:
-      - 環境変数 RESET_CHECKPOINTS=1 で runs/ を削除
-      - 環境変数 RESET_HTML=1        で web/ も削除
+    run_auto.sh から train.py が呼ばれるたびに、
+    checkpoints/<SR_CycleGAN系> を “ディレクトリごと”初期化する固定仕様。
+    - SR_CycleGAN と SR-CycleGAN の両表記に対応
+    - opt.checkpoints_dir 配下に限定する安全チェック付き
     """
-    base = os.path.join(opt.checkpoints_dir, opt.name)
-    runs_dir = os.path.join(base, "runs")
-    web_dir = os.path.join(base, "web")
+    checkpoints_dir = os.path.abspath(opt.checkpoints_dir)
+    cand_names = ["SR_CycleGAN", "SR-CycleGAN"]  # 取り違い対策で両方対応
 
-    if os.environ.get("RESET_CHECKPOINTS", "0") == "1":
-        shutil.rmtree(runs_dir, ignore_errors=True)
-        os.makedirs(runs_dir, exist_ok=True)
-        print(f"[INFO] Cleaned TensorBoard runs: {runs_dir}")
+    print(f"[RESET] checkpoints_dir={checkpoints_dir}")
+    for nm in cand_names:
+        target = os.path.abspath(os.path.join(checkpoints_dir, nm))
 
-    if os.environ.get("RESET_HTML", "0") == "1":
-        shutil.rmtree(web_dir, ignore_errors=True)
-        print(f"[INFO] Cleaned HTML dir: {web_dir}")
+        # 安全チェック：checkpoints_dir 配下かつ basename 一致のみ許可
+        if not (target + os.sep).startswith(checkpoints_dir + os.sep):
+            print(f"[WARN] Skip (outside checkpoints): {target}")
+            continue
+        if os.path.basename(target) != nm:
+            print(f"[WARN] Skip (basename mismatch): {target}")
+            continue
 
+        # 削除 → 作り直し
+        shutil.rmtree(target, ignore_errors=True)
+        os.makedirs(target, exist_ok=True)
+        print(f"[INFO] Force-cleaned: {target}")
 
 if __name__ == '__main__':
     # 1) オプション & データセット

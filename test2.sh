@@ -1,10 +1,17 @@
-#chmod +x test.sh 
-#./test.sh
+#!/usr/bin/env bash
+set -euo pipefail
 
+IN_DIR="/workspace/DataSet/ImageCAS/001.ImgCast"
+STAMP="$(date +%Y%m%d-%H%M%S)"
+OUT_DIR="/workspace/results/001.ImgCast"
+GPU_IDS="0"
 
-pip install pytorch-ssim
+export INPUT_DIR="$IN_DIR"
+export OUTPUT_DIR="$OUT_DIR"
 
-python inference_single.py \
+mkdir -p "${OUT_DIR}"
+
+python inference_multi.py \
   --dataset_mode dicom_ctpcct_2x_test \
   --model medical_cycle_gan \
   --clinical2micronetG clinical_to_micro_resnet_9blocks \
@@ -16,9 +23,9 @@ python inference_single.py \
   --checkpoints_dir /workspace/checkpoints_mac \
   --epoch 167 \
   --use_G A \
-  --input_dicom /workspace/IM_091.dcm \
-  --output_dicom /workspace/results/SR_2x.dcm \
   --halves_pixel_spacing \
   --pad_mod 4 \
-  --gpu_ids 0\
+  --gpu_ids "${GPU_IDS}" \
   --sampling_times 1
+
+echo "[DONE] Results saved under: ${OUT_DIR}"
