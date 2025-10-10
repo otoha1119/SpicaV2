@@ -8,6 +8,7 @@ from options.test_options import TestOptions
 from data import create_dataset
 from models import create_model
 from collections import OrderedDict
+import torch.nn as nn
 
 # ---------- 正規化/逆正規化（学習規約と一致） ----------
 def unit01_to_hu(unit: np.ndarray) -> np.ndarray:
@@ -176,12 +177,29 @@ def _load_specific_generator(model, opt) -> None:
     sd = torch.load(ckpt, map_location="cpu")
     if isinstance(sd, dict) and "state_dict" in sd:
         sd = sd["state_dict"]
-    new_sd = OrderedDict((k.replace("module.", ""), v) for k, v in sd.items())
-    ret = target.load_state_dict(new_sd, strict=False)
+
+    
+
+    # 読み込み先の“実体”を決定（DataParallelなら .module）
+    real_module = target.module if isinstance(target, nn.DataParallel) else target
+
+    sd = {
+        (k.replace("module.", "", 1) if k.startswith("module.") else k): v
+        for k, v in sd.items()
+    }
+
+    # パラメータ総ノルムで“重みが入ったか”も可視化
+    def _pnorm(m):
+        try:
+            return sum(p.detach().float().abs().sum().item() for p in m.parameters())
+        except Exception:
+            return -1
+
+
+    ret = real_module.load_state_dict(sd, strict=False)
+
     miss = getattr(ret, "missing_keys", [])
     unexp = getattr(ret, "unexpected_keys", [])
-    print(f"[OK] loaded {ckpt} into model.netG_{use if hasattr(model, f'netG_{use}') else 'netG'} "
-          f"(missing: {len(miss)}, unexpected: {len(unexp)})")
     
 
 
@@ -204,10 +222,6 @@ def main():
     if not getattr(opt, "which_epoch", None):
         setattr(opt, "which_epoch", str(getattr(opt, "epoch", "latest")))
 
-    print("[INFO] checkpoints_dir =", opt.checkpoints_dir)
-    print("[INFO] name            =", opt.name)
-    print("[INFO] which_epoch     =", getattr(opt, "which_epoch", "latest"))
-    print("[INFO] use_G           =", getattr(opt, "use_G", "A"))
     
 
     # # チェックポイントとエポック（手動ロードで使用）
@@ -225,7 +239,6 @@ def main():
         dev = next(net.parameters()).device
         dummy = torch.randn(1, 1, 16, 16, device=dev)
         out_d = net(dummy)
-        print("[DEBUG] netG_A 16x16 ->", tuple(out_d.shape))
 
     # 4) 自動ロード抑止 → setup（重みはまだ読まない）
     orig_names = getattr(model, "model_names", [])

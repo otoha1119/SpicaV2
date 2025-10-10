@@ -1,8 +1,6 @@
-"""
-chmod +x test.sh 
-./test.sh
-"""
-#test3
+#chmod +x test.sh 
+#./test.sh
+
 
 pip install pytorch-ssim
 
@@ -22,5 +20,5 @@ python medicaltest_dicom.py \
   --output_dicom /workspace/results/SR_2x.dcm \
   --halves_pixel_spacing \
   --pad_mod 4 \
-  --gpu_ids -1 \
+  --gpu_ids 0\
   --sampling_times 1
