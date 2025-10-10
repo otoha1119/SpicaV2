@@ -257,8 +257,8 @@ def main():
 
     # 追加CLI（--input_dir/--output_dir）が TestOptions に無い場合は getattr で拾う
     # ここでは環境変数 / 後述の test2.py から渡します
-    in_dir = getattr(opt, "input_dir", None)
-    out_dir = getattr(opt, "output_dir", None)
+    in_dir = os.environ.get("INPUT_DIR", None)
+    out_dir = os.environ.get("OUTPUT_DIR", None)
 
     if not in_dir or not out_dir:
         raise SystemExit("ERROR: --input_dir と --output_dir を指定してください")
