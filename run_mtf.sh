@@ -11,6 +11,8 @@ LR_DIR="/workspace/DataSet/ImageCAS/001.ImgCast"
 SR_DIR="/workspace/results/001.ImgCast"
 HR_DIR="/workspace/DataSet/photonCT/PhotonCT1024v2/DICOMSAVE-20240514142921-000"
 
+
+
 # 出力先
 OUT_DIR="/workspace/results"
 
