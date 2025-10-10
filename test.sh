@@ -1,3 +1,8 @@
+"""
+chmod +x test.sh 
+./test.sh
+"""
+
 pip install pytorch-ssim
 
 python medicaltest_dicom.py \
