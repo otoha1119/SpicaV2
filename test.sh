@@ -2,7 +2,7 @@
 chmod +x test.sh 
 ./test.sh
 """
-#test
+#test3
 
 pip install pytorch-ssim
 
