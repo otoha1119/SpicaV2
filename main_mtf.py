@@ -9,6 +9,8 @@ line interface to specify directories for LR, SR and HR series,
 control the number of ROIs, toggle CUDA usage, and adjust SR
 scaling.
 """
+###
+
 
 from __future__ import annotations
 
@@ -51,6 +53,7 @@ def adjust_pixel_spacing_for_sr(slices: List, scale: float) -> None:
         row_spacing, col_spacing = s.pixel_spacing
         # We assume scaling is uniform; only adjust along in‑plane dimensions
         s.pixel_spacing = (row_spacing / scale, col_spacing / scale)
+
 
 
 def compute_metrics_for_rois(

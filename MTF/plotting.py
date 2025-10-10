@@ -8,6 +8,7 @@ axis up to the minimum Nyquist frequency in the series.  Optionally,
 vertical lines marking the Nyquist frequencies of each series can be
 drawn.
 """
+###
 
 from __future__ import annotations
 
