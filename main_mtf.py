@@ -9,8 +9,6 @@ line interface to specify directories for LR, SR and HR series,
 control the number of ROIs, toggle CUDA usage, and adjust SR
 scaling.
 """
-###
-
 
 from __future__ import annotations
 
@@ -41,6 +39,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--gpu_ids", type=str, default="0", help="CUDA device IDs (ignored, set via wrapper)")
     parser.add_argument("--sr_scale", type=float, default=None, help="Scale factor to adjust SR PixelSpacing (optional)")
     parser.add_argument("--seed", type=int, default=42, help="RNG seed")
+    parser.add_argument("--x_norm", type=int, default=1, help="1: normalized x (f/fNyquist), 0: physical cycles/mm")
     return parser.parse_args()
 
 
@@ -53,7 +52,6 @@ def adjust_pixel_spacing_for_sr(slices: List, scale: float) -> None:
         row_spacing, col_spacing = s.pixel_spacing
         # We assume scaling is uniform; only adjust along in‑plane dimensions
         s.pixel_spacing = (row_spacing / scale, col_spacing / scale)
-
 
 
 def compute_metrics_for_rois(
@@ -228,6 +226,7 @@ def main() -> None:
         series_nyquist=series_nyquists,
         out_path=str(plot_path),
         draw_nyquist=bool(args.draw_nyquist),
+        normalize_x=bool(args.x_norm),
     )
     logging.info(f"Saved MTF plot to {plot_path}")
 
