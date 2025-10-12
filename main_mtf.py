@@ -3,11 +3,12 @@
 Entry point for the MTF extraction CLI.
 
 This script orchestrates loading DICOM series, selecting natural
-high‑contrast ROIs, computing MTF curves for each ROI, aggregating
+high-contrast ROIs, computing MTF curves for each ROI, aggregating
 statistics, and generating summary plots.  It exposes a command
 line interface to specify directories for LR, SR and HR series,
 control the number of ROIs, toggle CUDA usage, and adjust SR
-scaling.
+scaling. Optionally exports per-ROI demonstration figures
+(ROI image, ESF, LSF, MTF) for presentation.
 """
 
 from __future__ import annotations
@@ -55,11 +56,13 @@ def parse_args() -> argparse.Namespace:
         metavar=("ROW", "COL"),
         help="Override HR PixelSpacing (mm), e.g., --hr_spacing 0.136719 0.136719",
     )
+    # --- NEW: export examples (ROI/ESF/LSF/MTF) ---
+    parser.add_argument("--export_examples", type=int, choices=[0, 1], default=0,
+                        help="Save example ROI/ESF/LSF/MTF PNGs (0=off, 1=on)")
+    parser.add_argument("--examples_per_series", type=int, default=1,
+                        help="How many example ROIs to export per series when --export_examples=1")
 
     return parser.parse_args()
-
-
-
 
 
 def compute_metrics_for_rois(
@@ -71,25 +74,11 @@ def compute_metrics_for_rois(
     """
     Compute MTF metrics for each ROI in a series.
 
-    Parameters
-    ----------
-    rois : list of ROI
-        ROIs selected for the series.
-    slices_lookup : dict
-        Mapping from slice index to pixel spacing (row_spacing, col_spacing) in mm.
-    use_cuda : bool
-        Whether to use CUDA FFT where available.
-    global_f_max : float
-        Maximum frequency for AUC computation (shared across all series).
-
     Returns
     -------
     curves : list of (freq, mtf) tuples
-        Frequency and MTF arrays for each ROI.
     nyquists : list of float
-        Nyquist frequency for each ROI (cycles/mm).
     metrics_df : pandas.DataFrame
-        Dataframe containing ROI metrics (mtf50, mtf10, auc).
     """
     curves: List[Tuple[np.ndarray, np.ndarray]] = []
     nyquist_list: List[float] = []
@@ -132,12 +121,126 @@ def compute_metrics_for_rois(
     return curves, nyquist_list, df
 
 
+# --- NEW: single-ROI export (ROI -> ESF -> LSF -> MTF) ---
+def _export_roi_esf_lsf_mtf(
+    roi: ROI,
+    pixel_spacing: Tuple[float, float],
+    out_dir: Path,
+    series_name: str,
+    idx_in_series: int,
+    draw_nyquist: bool,
+) -> None:
+    """
+    Make & save 4 PNGs per ROI: roi_XXX.png, esf_XXX.png, lsf_XXX.png, mtf_XXX.png
+    Dependencies: numpy, matplotlib only.
+    """
+    import numpy as np
+    import matplotlib.pyplot as plt
+
+    img = np.asarray(roi.roi_image, dtype=float)
+
+    # --- ROI image with normal arrow ---
+    roi_dir = out_dir / "examples" / series_name
+    roi_dir.mkdir(parents=True, exist_ok=True)
+    roi_png = roi_dir / f"roi_{idx_in_series:03d}.png"
+
+    fig, ax = plt.subplots(figsize=(3.6, 3.6))
+    ax.imshow(img, cmap="gray", interpolation="nearest")
+    ax.set_axis_off()
+    h, w = img.shape
+    cx, cy = (w - 1) / 2.0, (h - 1) / 2.0
+    theta = np.deg2rad(roi.orientation_deg + 90.0)  # edge normal
+    dx, dy = np.cos(theta), np.sin(theta)
+    scale = min(h, w) * 0.35
+    ax.arrow(cx - dx * scale * 0.5, cy - dy * scale * 0.5, dx * scale, dy * scale,
+             head_width=4, head_length=6, fc="lime", ec="lime", linewidth=1.2)
+    fig.tight_layout(pad=0)
+    fig.savefig(roi_png, dpi=200)
+    plt.close(fig)
+
+    # --- ESF along the normal direction ---
+    y_idx, x_idx = np.indices(img.shape)
+    x0 = x_idx - cx
+    y0 = y_idx - cy
+    t = x0 * dx + y0 * dy  # projection to normal [px]
+
+    row_mm, col_mm = float(pixel_spacing[0]), float(pixel_spacing[1])
+    px_mm = (row_mm + col_mm) * 0.5  # approximate
+    dt_px = 0.25  # oversampling-like bin
+    t_min, t_max = float(np.min(t)), float(np.max(t))
+    nbins = int(np.ceil((t_max - t_min) / dt_px)) + 1
+    t_edges = np.linspace(t_min, t_max, nbins + 1)
+    t_centers_px = 0.5 * (t_edges[:-1] + t_edges[1:])
+    bin_idx = np.clip(np.searchsorted(t_edges, t, side="right") - 1, 0, nbins - 1)
+    sums = np.bincount(bin_idx.ravel(), weights=img.ravel(), minlength=nbins)
+    counts = np.bincount(bin_idx.ravel(), minlength=nbins)
+    esf = np.divide(sums, counts, out=np.full_like(sums, np.nan, dtype=float), where=counts > 0)
+
+    if np.isfinite(esf).any():
+        k = 5
+        kernel = np.ones(k, dtype=float) / k
+        esf = np.convolve(np.nan_to_num(esf, nan=np.nanmean(esf)), kernel, mode="same")
+
+    t_centers_mm = t_centers_px * px_mm
+
+    esf_png = roi_dir / f"esf_{idx_in_series:03d}.png"
+    fig, ax = plt.subplots(figsize=(4.5, 3.2))
+    ax.plot(t_centers_mm, esf, color="black", linewidth=1.8)
+    ax.set_xlabel("Distance along edge normal [mm]")
+    ax.set_ylabel("ESF (arb. units)")
+    ax.grid(True, alpha=0.3)
+    fig.tight_layout()
+    fig.savefig(esf_png, dpi=200)
+    plt.close(fig)
+
+    # --- LSF = d/dx ESF ---
+    if len(t_centers_mm) >= 3:
+        dt_mm = float(np.median(np.diff(t_centers_mm)))
+    else:
+        dt_mm = px_mm * dt_px
+    lsf = np.gradient(esf, dt_mm)
+
+    lsf_png = roi_dir / f"lsf_{idx_in_series:03d}.png"
+    fig, ax = plt.subplots(figsize=(4.5, 3.2))
+    ax.plot(t_centers_mm, lsf, color="black", linewidth=1.8)
+    ax.set_xlabel("Distance along edge normal [mm]")
+    ax.set_ylabel("LSF (derivative of ESF)")
+    ax.grid(True, alpha=0.3)
+    fig.tight_layout()
+    fig.savefig(lsf_png, dpi=200)
+    plt.close(fig)
+
+    # --- MTF = |rFFT(LSF)| normalized by DC ---
+    lsf = np.nan_to_num(lsf, nan=0.0)
+    spec = np.fft.rfft(lsf)
+    freq = np.fft.rfftfreq(lsf.size, d=dt_mm)  # cycles/mm
+    mtf = np.abs(spec)
+    if mtf.size > 0 and mtf[0] != 0:
+        mtf = mtf / mtf[0]
+    nyq = 0.5 / col_mm if col_mm > 0 else None
+
+    mtf_png = roi_dir / f"mtf_{idx_in_series:03d}.png"
+    fig, ax = plt.subplots(figsize=(4.5, 3.2))
+    ax.plot(freq, mtf, color="black", linewidth=1.8)
+    if draw_nyquist and nyq is not None:
+        ax.axvline(nyq, color="0.6", linestyle="--", linewidth=1.0)
+    ax.set_xlim(0, max(1e-6, np.nanmax(freq)))
+    ax.set_ylim(0, 1.05)
+    ax.set_xlabel("Spatial Frequency [cycles/mm]")
+    ax.set_ylabel("MTF")
+    ax.grid(True, alpha=0.3)
+    fig.tight_layout()
+    fig.savefig(mtf_png, dpi=200)
+    plt.close(fig)
+
+
 def main() -> None:
     args = parse_args()
     setup_logging()
     seed_everything(args.seed)
     out_dir = Path(args.out_dir)
     ensure_dir(out_dir)
+
     # Load all series first
     series_dirs = {"LR": Path(args.lr_dir), "SR": Path(args.sr_dir), "HR": Path(args.hr_dir)}
     series_slices: Dict[str, List] = {}
@@ -147,34 +250,31 @@ def main() -> None:
         if not series_slices[series_name]:
             logging.warning(f"No DICOM slices found in {d}")
 
-    # 1) DICOM PixelSpacing -> s.pixel_spacing にまず写す（初期化）
+    # 1) copy DICOM PixelSpacing -> s.pixel_spacing when present
     for series_name, slices in series_slices.items():
         for s in slices:
             if hasattr(s, "PixelSpacing") and s.PixelSpacing is not None:
                 try:
                     s.pixel_spacing = (float(s.PixelSpacing[0]), float(s.PixelSpacing[1]))
                 except Exception:
-                    # 壊れている/欠損なら後続の上書きに任せる
-                    pass
+                    pass  # let overrides handle
 
-    # 2) 明示オーバーライド（必要時のみ）
+    # 2) explicit overrides (LR/HR), and seed SR from LR if needed
     if getattr(args, "lr_spacing", None):
         apply_spacing_override(series_slices.get("LR", []), args.lr_spacing)
     if getattr(args, "hr_spacing", None):
         apply_spacing_override(series_slices.get("HR", []), args.hr_spacing)
-    # SRはDICOMのPixelSpacingが空/未更新なことが多いので、LRの値をベースとしてコピー
     if getattr(args, "lr_spacing", None):
         apply_spacing_override(series_slices.get("SR", []), args.lr_spacing)
 
-    # 3) SRのスケール適用（pixel_spacing を 1/scale に）
+    # 3) SR scale (divide in-plane spacing by scale)
     if args.sr_scale is not None and args.sr_scale > 0.0:
         logging.info(f"Applying SR scale factor {args.sr_scale} to pixel spacing")
         adjust_pixel_spacing_for_sr(series_slices.get("SR", []), args.sr_scale)
-    
-    # 3.5) 最終同期：override/scaleの結果を s.pixel_spacing に反映（s.PixelSpacing -> s.pixel_spacing）
+
+    # 3.5) final sync / fallback
     for series_name, slices in series_slices.items():
         for s in slices:
-            # まず PixelSpacing 優先でコピー
             src = getattr(s, "PixelSpacing", None)
             if src is not None:
                 try:
@@ -182,24 +282,20 @@ def main() -> None:
                     continue
                 except Exception:
                     pass
-            # 次善策：pixel_spacing が妥当でない(=1.0,1.0 等)なら直す
             ps = getattr(s, "pixel_spacing", None)
             if (ps is None) or (len(ps) == 2 and (ps[0] == 1.0 and ps[1] == 1.0)):
-                # どうしても無ければ、シリーズ別の既知値で埋める（LR/HRは指定値、SRは縮尺適用値）
                 if series_name == "LR" and getattr(args, "lr_spacing", None):
                     s.pixel_spacing = (float(args.lr_spacing[0]), float(args.lr_spacing[1]))
                 elif series_name == "HR" and getattr(args, "hr_spacing", None):
                     s.pixel_spacing = (float(args.hr_spacing[0]), float(args.hr_spacing[1]))
                 elif series_name == "SR":
-                    # SR は LR を基準に scale で割る
                     if getattr(args, "lr_spacing", None) and args.sr_scale:
                         s.pixel_spacing = (
                             float(args.lr_spacing[0]) / float(args.sr_scale),
                             float(args.lr_spacing[1]) / float(args.sr_scale),
                         )
 
-
-    # 4) 補正後の pixel_spacing で lookup を作成（この後は常にこれを参照）
+    # 4) build per-slice spacing lookup (used everywhere below)
     slices_lookup_map: Dict[str, Dict[int, Tuple[float, float]]] = {}
     for series_name, slices in series_slices.items():
         lookup = {}
@@ -207,7 +303,7 @@ def main() -> None:
             lookup[s.index] = s.pixel_spacing
         slices_lookup_map[series_name] = lookup
 
-    # （任意の確認ログ）中央値を出して sanity check
+    # quick sanity log
     def _med_col(sp_list):
         cols = [float(sp[1]) for sp in sp_list if sp and sp[1] > 0]
         return (np.median(cols) if cols else float("nan"))
@@ -215,7 +311,6 @@ def main() -> None:
     sr_med = _med_col([s.pixel_spacing for s in series_slices.get("SR", [])])
     hr_med = _med_col([s.pixel_spacing for s in series_slices.get("HR", [])])
     logging.info(f"[Check] median PixelSpacing col (mm): LR={lr_med:.6f}, SR={sr_med:.6f}, HR={hr_med:.6f}")
-
 
     # ROI selection
     selector = ROISelector(
@@ -231,6 +326,26 @@ def main() -> None:
         rois = selector.select_rois(slices, name, args.num_rois)
         series_rois[name] = rois
         logging.info(f"Selected {len(rois)} ROIs for {name}")
+
+    # --- NEW: optional export of example ROI/ESF/LSF/MTF before heavy metrics ---
+    if getattr(args, "export_examples", 0) == 1:
+        ex_n = int(getattr(args, "examples_per_series", 1))
+        for series_name, rois in series_rois.items():
+            if not rois:
+                continue
+            lookup = slices_lookup_map.get(series_name, {})
+            for j, roi in enumerate(rois[:ex_n]):
+                pixsp = lookup.get(roi.slice_index, (1.0, 1.0))
+                _export_roi_esf_lsf_mtf(
+                    roi=roi,
+                    pixel_spacing=pixsp,
+                    out_dir=out_dir,
+                    series_name=series_name,
+                    idx_in_series=j,
+                    draw_nyquist=bool(args.draw_nyquist),
+                )
+        logging.info(f"Saved example ROI/ESF/LSF/MTF under {out_dir / 'examples'}")
+
     # Determine global f_max (min of all Nyquist frequencies across series)
     all_nyquists: List[float] = []
     for name, slices in series_slices.items():
@@ -242,6 +357,7 @@ def main() -> None:
     if global_f_max <= 0.0:
         global_f_max = 0.0
     logging.info(f"Global f_max for AUC computation: {global_f_max:.3f} cycles/mm")
+
     # Compute metrics
     series_curves: Dict[str, List[Tuple[np.ndarray, np.ndarray]]] = {}
     series_nyquists: Dict[str, List[float]] = {}
@@ -262,6 +378,7 @@ def main() -> None:
         roi_csv = out_dir / f"{name.lower()}_roi_metrics.csv"
         df_metrics.to_csv(roi_csv, index=False)
         logging.info(f"Saved ROI metrics for {name} to {roi_csv}")
+
     # Save summary metrics
     if metrics_frames:
         summary_records = []
@@ -287,6 +404,7 @@ def main() -> None:
         summary_path = out_dir / "summary_metrics.csv"
         summary_df.to_csv(summary_path, index=False)
         logging.info(f"Saved summary metrics to {summary_path}")
+
     # Plot
     plot_path = out_dir / "mtf_overlaid.png"
     plot_mean_mtf(

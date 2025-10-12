@@ -14,6 +14,10 @@ HR_DIR="/workspace/DataSet/photonCT/PhotonCT1024v2/DICOMSAVE-20240514142921-000"
 # 出力先
 OUT_DIR="/workspace/results"
 
+#ROI出力
+EXPORT_EXAMPLES=1   # 0=無効, 1=有効
+EXAMPLES_PER_SERIES=1   # 1シリーズあたりの例数
+
 # 処理パラメータ
 NUM_ROIS=4000            # 1シリーズあたり抽出するROI数
 DRAW_NYQUIST=0          # 1=Nyquist縦線を描画, 0=非表示
@@ -137,6 +141,8 @@ python3 "${SCRIPT_DIR}/main_mtf.py" \
   --num_rois "${NUM_ROIS}" \
   --draw_nyquist "${DRAW_NYQUIST}" \
   --use_cuda "${USE_CUDA}" \
+  --export_examples "${EXPORT_EXAMPLES}" \
+  --examples_per_series "${EXAMPLES_PER_SERIES}" \
   "${SR_SCALE_ARG[@]}" \
   "${LR_SPACING_ARG[@]}" \
   "${HR_SPACING_ARG[@]}" \
