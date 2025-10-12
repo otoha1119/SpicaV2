@@ -1,15 +1,17 @@
 """
 Plotting utilities for MTF curves.
 
-Supports both physical cycles/mm plotting (common band) and normalized x-axis (f/fNyquist).
-API is kept compatible with the existing pipeline:
+Supports both physical cycles/mm plotting and normalized x-axis (f/fNyquist).
+API:
     plot_mean_mtf(series_mtf, series_nyquist, out_path, draw_nyquist, normalize_x=False)
 """
 from __future__ import annotations
 
+from typing import Dict, List, Tuple
 import numpy as np
 import matplotlib.pyplot as plt
-from typing import Dict, List, Tuple
+import logging
+
 
 def plot_mean_mtf(
     series_mtf: Dict[str, List[Tuple[np.ndarray, np.ndarray]]],
@@ -35,39 +37,47 @@ def plot_mean_mtf(
         - normalize_x=False: per-series median Nyquist lines.
     normalize_x : bool
         If True, plot on normalized x-axis (f/fNyquist) in [0,1].
-        If False, use physical cycles/mm up to min Nyquist across series.
+        If False, plot in physical cycles/mm.  Each series is averaged on its
+        own x grid up to 0.95 * median(Nyquist of that series).
     """
     fig, ax = plt.subplots(figsize=(7.0, 5.0))
 
     colors = {'LR': 'tab:blue', 'SR': 'tab:orange', 'HR': 'tab:green'}
 
-    # Build common x-axis
-    if normalize_x:
-        x_common = np.linspace(0.0, 1.0, 512)
-    else:
-        nyq_medians = []
-        for nyqs in series_nyquist.values():
-            if nyqs:
-                nyq_medians.append(float(np.median(nyqs)))
-        fmax = 0.95 * float(np.min(nyq_medians)) if nyq_medians else 0.5
-        x_common = np.linspace(0.0, fmax, 512)
-
-    # Interpolate ROI curves onto common x, then average
+    # ---- draw curves (series by series) ----
+    plotted_any = False
     for name, curves in series_mtf.items():
         if not curves:
             continue
 
         nyqs = series_nyquist.get(name, [])
+        if not nyqs:
+            # cannot normalize, and also need Nyquist for physical-range choice
+            logging.warning(f"[Plot] No Nyquist values for series={name}; skipping.")
+            continue
+
+        # x grid per series
+        if normalize_x:
+            x_common = np.linspace(0.0, 1.0, 512)
+        else:
+            nyq_med = float(np.median(nyqs))
+            if nyq_med <= 0:
+                logging.warning(f"[Plot] Non-positive median Nyquist for {name}; skipping.")
+                continue
+            x_common = np.linspace(0.0, 0.95 * nyq_med, 512)
+
         interp_list = []
         for i, (freq, mtf) in enumerate(curves):
+            if freq is None or mtf is None:
+                continue
             freq = np.asarray(freq, dtype=float)
-            mtf = np.asarray(mtf, dtype=float)
+            mtf  = np.asarray(mtf,  dtype=float)
 
             if normalize_x:
-                nyq = float(nyqs[i]) if i < len(nyqs) else (float(np.median(nyqs)) if nyqs else 0.0)
-                if nyq <= 0:
+                nyq_i = float(nyqs[i]) if i < len(nyqs) else nyq_med
+                if nyq_i <= 0:
                     continue
-                f_norm = freq / nyq
+                f_norm = freq / nyq_i
                 mask = (f_norm >= 0.0) & (f_norm <= 1.0)
                 if mask.sum() < 4:
                     continue
@@ -84,10 +94,24 @@ def plot_mean_mtf(
             continue
 
         arr = np.vstack(interp_list)
-        mean = np.nanmean(arr, axis=0)
-        ax.plot(x_common, mean, label=name, color=colors.get(name, None), linewidth=2.0)
 
-    # Labels and guides
+        # drop columns that are all-NaN to avoid RuntimeWarning
+        valid_cols = ~np.all(np.isnan(arr), axis=0)
+        if not np.any(valid_cols):
+            continue
+
+        mean = np.nanmean(arr[:, valid_cols], axis=0)
+        ax.plot(x_common[valid_cols], mean, label=name,
+                color=colors.get(name, None), linewidth=2.0)
+        plotted_any = True
+
+    if not plotted_any:
+        logging.warning("[Plot] No valid curves to plot.")
+        fig.savefig(out_path, dpi=200)
+        plt.close(fig)
+        return
+
+    # ---- labels & guide lines ----
     if normalize_x:
         ax.set_xlabel("Normalized Spatial Frequency (f / f_Nyquist)")
         if draw_nyquist:
@@ -98,12 +122,23 @@ def plot_mean_mtf(
             for name, nyqs in series_nyquist.items():
                 if nyqs:
                     nyq_med = float(np.median(nyqs))
-                    ax.axvline(nyq_med, color=colors.get(name, None), linestyle="--", linewidth=1.0, alpha=0.6)
+                    ax.axvline(nyq_med, color=colors.get(name, None),
+                               linestyle="--", linewidth=1.0, alpha=0.6)
 
     ax.set_ylabel("MTF")
     ax.set_ylim(0.0, 1.0)
-    #ax.set_xlim(0.0, x_common[-1])
-    ax.set_xlim(0.0, 2.0)
+
+    # ---- x limits ----
+    if normalize_x:
+        ax.set_xlim(0.0, 1.0)
+    else:
+        # show up to the largest median Nyquist across series (with margin)
+        try:
+            nyq_max = max(float(np.median(v)) for v in series_nyquist.values() if v)
+            ax.set_xlim(0.0, nyq_max * 1.2)
+        except Exception:
+            pass  # fallback to autoscale
+
     ax.grid(True, alpha=0.3)
     ax.legend()
     fig.tight_layout()
