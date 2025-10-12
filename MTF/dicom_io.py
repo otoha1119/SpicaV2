@@ -56,10 +56,10 @@ def load_dicom_file(path: Path) -> DicomSlice:
             row_spacing, col_spacing = float(spacing[0]), float(spacing[1])
         else:
             row_spacing = col_spacing = 1.0
-            logging.warning(f"PixelSpacing missing or malformed for {path}")
+            #logging.warning(f"PixelSpacing missing or malformed for {path}")
     except Exception:
         row_spacing = col_spacing = 1.0
-        logging.warning(f"PixelSpacing not found for {path}")
+        #logging.warning(f"PixelSpacing not found for {path}")
     # Slice thickness
     slice_thickness = None
     if hasattr(ds, "SliceThickness"):

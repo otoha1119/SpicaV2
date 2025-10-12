@@ -59,15 +59,7 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def adjust_pixel_spacing_for_sr(slices: List, scale: float) -> None:
-    """Apply scaling factor to SR slice pixel spacing in place."""
-    if scale is None:
-        return
-    for s in slices:
-        # Pixel spacing is tuple (row_spacing, col_spacing)
-        row_spacing, col_spacing = s.pixel_spacing
-        # We assume scaling is uniform; only adjust along in‑plane dimensions
-        s.pixel_spacing = (row_spacing / scale, col_spacing / scale)
+
 
 
 def compute_metrics_for_rois(
@@ -160,6 +152,18 @@ def main() -> None:
             apply_spacing_override(series_slices.get("LR", []), args.lr_spacing)
         if getattr(args, "hr_spacing", None):
             apply_spacing_override(series_slices.get("HR", []), args.hr_spacing)
+        
+        apply_spacing_override(series_slices.get("SR", []), args.lr_spacing)
+
+        
+        for name, slices in series_slices.items():
+            for s in slices:
+                if hasattr(s, "PixelSpacing"):
+                    try:
+                        s.pixel_spacing = tuple(float(x) for x in s.PixelSpacing)
+                    except Exception:
+                        pass
+
  
 
     # Adjust SR pixel spacing if scale factor provided

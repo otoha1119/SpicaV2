@@ -11,8 +11,6 @@ LR_DIR="/workspace/DataSet/ImageCAS/001.ImgCast"
 SR_DIR="/workspace/results/001.ImgCast"
 HR_DIR="/workspace/DataSet/photonCT/PhotonCT1024v2/DICOMSAVE-20240514142921-000"
 
-
-
 # 出力先
 OUT_DIR="/workspace/results"
 
@@ -24,6 +22,15 @@ GPU_IDS="0"             # 例: "0", "0,1", "-1"(CPU扱い)
 
 # SRのPixelSpacing補正倍率（未更新DICOM対策）。空なら補正しない。
 SR_SCALE="2.0"          # 例: "2.0" / ""（空文字で無効）
+
+# x軸正規化 (1=正規化, 0=物理単位[cycles/mm])
+X_NORM=0
+
+# PixelSpacing明示上書き（空なら無効）
+LR_SPACING_ROW="0.3184"
+LR_SPACING_COL="0.3184"
+HR_SPACING_ROW="0.136719"
+HR_SPACING_COL="0.136719"
 
 # 再現性
 SEED=42
@@ -42,6 +49,9 @@ usage() {
   echo "  --use_cuda 0|1       (default: ${USE_CUDA})"
   echo "  --gpu_ids IDS        e.g. 0 / 0,1 / -1 (default: ${GPU_IDS})"
   echo "  --sr_scale S         e.g. 2.0 ; empty to disable (default: \"${SR_SCALE}\")"
+  echo "  --x_norm 0|1         normalize x-axis (default: ${X_NORM})"
+  echo "  --lr_spacing ROW COL override LR PixelSpacing mm (default: ${LR_SPACING_ROW} ${LR_SPACING_COL})"
+  echo "  --hr_spacing ROW COL override HR PixelSpacing mm (default: ${HR_SPACING_ROW} ${HR_SPACING_COL})"
   echo "  --seed N             RNG seed (default: ${SEED})"
   echo "  -h, --help           show this help"
 }
@@ -59,6 +69,9 @@ while [[ $# -gt 0 ]]; do
     --use_cuda)      USE_CUDA="$2"; shift; shift ;;
     --gpu_ids)       GPU_IDS="$2"; shift; shift ;;
     --sr_scale)      SR_SCALE="$2"; shift; shift ;;
+    --x_norm)        X_NORM="$2"; shift; shift ;;
+    --lr_spacing)    LR_SPACING_ROW="$2"; LR_SPACING_COL="$3"; shift; shift; shift ;;
+    --hr_spacing)    HR_SPACING_ROW="$2"; HR_SPACING_COL="$3"; shift; shift; shift ;;
     --seed)          SEED="$2"; shift; shift ;;
     -h|--help)       usage; exit 0 ;;
     *) echo "Unknown option: $key"; usage; exit 1 ;;
@@ -67,7 +80,7 @@ done
 
 # ------------- 前提チェック -------------
 if [[ -z "${LR_DIR}" || -z "${SR_DIR}" || -z "${HR_DIR}" ]]; then
-  echo "Error: LR_DIR / SR_DIR / HR_DIR が未設定です。スクリプト先頭の設定ブロックを編集するか、CLIで指定してください。" >&2
+  echo "Error: LR_DIR / SR_DIR / HR_DIR が未設定です。" >&2
   usage; exit 1
 fi
 if [[ ! -d "$LR_DIR" ]]; then echo "Error: LR_DIR not found: $LR_DIR" >&2; exit 1; fi
@@ -80,7 +93,6 @@ mkdir -p "$OUT_DIR"
 if [[ "${USE_CUDA}" == "1" && "${GPU_IDS}" != "-1" ]]; then
   export CUDA_VISIBLE_DEVICES="${GPU_IDS}"
 else
-  # CPU強制（-1 指定時や --use_cuda=0）
   export CUDA_VISIBLE_DEVICES=""
 fi
 
@@ -93,12 +105,28 @@ if [[ -n "${SR_SCALE}" ]]; then
   SR_SCALE_ARG=(--sr_scale "${SR_SCALE}")
 fi
 
+# X_NORM
+X_NORM_ARG=(--x_norm "${X_NORM}")
+
+# LR/HR spacing
+LR_SPACING_ARG=()
+if [[ -n "${LR_SPACING_ROW}" && -n "${LR_SPACING_COL}" ]]; then
+  LR_SPACING_ARG=(--lr_spacing "${LR_SPACING_ROW}" "${LR_SPACING_COL}")
+fi
+
+HR_SPACING_ARG=()
+if [[ -n "${HR_SPACING_ROW}" && -n "${HR_SPACING_COL}" ]]; then
+  HR_SPACING_ARG=(--hr_spacing "${HR_SPACING_ROW}" "${HR_SPACING_COL}")
+fi
+
 echo "[INFO] LR_DIR=${LR_DIR}"
 echo "[INFO] SR_DIR=${SR_DIR}"
 echo "[INFO] HR_DIR=${HR_DIR}"
 echo "[INFO] OUT_DIR=${OUT_DIR}"
 echo "[INFO] NUM_ROIS=${NUM_ROIS}, DRAW_NYQUIST=${DRAW_NYQUIST}"
-echo "[INFO] USE_CUDA=${USE_CUDA}, GPU_IDS=${GPU_IDS}, SR_SCALE=${SR_SCALE:-<none>}, SEED=${SEED}"
+echo "[INFO] USE_CUDA=${USE_CUDA}, GPU_IDS=${GPU_IDS}"
+echo "[INFO] SR_SCALE=${SR_SCALE:-<none>}, X_NORM=${X_NORM}, SEED=${SEED}"
+echo "[INFO] LR_SPACING=${LR_SPACING_ROW:-<none>} ${LR_SPACING_COL:-<none>}, HR_SPACING=${HR_SPACING_ROW:-<none>} ${HR_SPACING_COL:-<none>}"
 echo
 
 python3 "${SCRIPT_DIR}/main_mtf.py" \
@@ -110,4 +138,7 @@ python3 "${SCRIPT_DIR}/main_mtf.py" \
   --draw_nyquist "${DRAW_NYQUIST}" \
   --use_cuda "${USE_CUDA}" \
   "${SR_SCALE_ARG[@]}" \
+  "${LR_SPACING_ARG[@]}" \
+  "${HR_SPACING_ARG[@]}" \
+  "${X_NORM_ARG[@]}" \
   --seed "${SEED}"
