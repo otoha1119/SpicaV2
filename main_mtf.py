@@ -25,6 +25,7 @@ from MTF.roi_selector import ROISelector, ROI
 from MTF.mtf_core import compute_mtf_for_roi, compute_auc
 from MTF.plotting import plot_mean_mtf
 from MTF.utils import ensure_dir, seed_everything, setup_logging
+from MTF.dicom_io import adjust_pixel_spacing_for_sr, apply_spacing_override
 
 
 def parse_args() -> argparse.Namespace:
@@ -40,6 +41,21 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--sr_scale", type=float, default=None, help="Scale factor to adjust SR PixelSpacing (optional)")
     parser.add_argument("--seed", type=int, default=42, help="RNG seed")
     parser.add_argument("--x_norm", type=int, default=1, help="1: normalized x (f/fNyquist), 0: physical cycles/mm")
+    parser.add_argument(
+        "--lr_spacing",
+        type=float,
+        nargs=2,
+        metavar=("ROW", "COL"),
+        help="Override LR PixelSpacing (mm), e.g., --lr_spacing 0.3184 0.3184",
+    )
+    parser.add_argument(
+        "--hr_spacing",
+        type=float,
+        nargs=2,
+        metavar=("ROW", "COL"),
+        help="Override HR PixelSpacing (mm), e.g., --hr_spacing 0.136719 0.136719",
+    )
+
     return parser.parse_args()
 
 
@@ -138,6 +154,14 @@ def main() -> None:
         series_slices[name] = load_series(d)
         if not series_slices[name]:
             logging.warning(f"No DICOM slices found in {d}")
+    
+           # --- PixelSpacing の明示オーバーライド（必要時のみ） ---
+        if getattr(args, "lr_spacing", None):
+            apply_spacing_override(series_slices.get("LR", []), args.lr_spacing)
+        if getattr(args, "hr_spacing", None):
+            apply_spacing_override(series_slices.get("HR", []), args.hr_spacing)
+ 
+
     # Adjust SR pixel spacing if scale factor provided
     if args.sr_scale is not None and args.sr_scale > 0.0:
         logging.info(f"Applying SR scale factor {args.sr_scale} to pixel spacing")

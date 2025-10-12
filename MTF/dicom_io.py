@@ -112,3 +112,29 @@ def load_series(directory: Path) -> List[DicomSlice]:
         slice_obj.index = idx
         slices.append(slice_obj)
     return slices
+
+def apply_spacing_override(slices, spacing_tuple):
+    """
+    DICOMスライス配列に対して PixelSpacing を強制上書きする。
+    spacing_tuple: (row_mm, col_mm) のタプル（mm単位）
+    """
+    if not slices:
+        return
+    try:
+        row, col = float(spacing_tuple[0]), float(spacing_tuple[1])
+    except Exception:
+        import logging
+        logging.warning("apply_spacing_override: invalid spacing_tuple; skip.")
+        return
+
+    import logging
+    n = 0
+    for ds in slices:
+        try:
+            # pydicom Dataset を想定
+            ds.PixelSpacing = [row, col]  # DICOMでは [row, col]
+            n += 1
+        except Exception:
+            # 形式が違うなどで失敗したら無視
+            pass
+    logging.info(f"Applied PixelSpacing override to {n} slices -> [{row}, {col}] mm")
