@@ -24,7 +24,7 @@ GPU_IDS="0"             # 例: "0", "0,1", "-1"(CPU扱い)
 SR_SCALE="2.0"          # 例: "2.0" / ""（空文字で無効）
 
 # x軸正規化 (1=正規化, 0=物理単位[cycles/mm])
-X_NORM=0
+X_NORM=1
 
 # PixelSpacing明示上書き（空なら無効）
 LR_SPACING_ROW="0.3184"

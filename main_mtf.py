@@ -170,6 +170,34 @@ def main() -> None:
     if args.sr_scale is not None and args.sr_scale > 0.0:
         logging.info(f"Applying SR scale factor {args.sr_scale} to pixel spacing")
         adjust_pixel_spacing_for_sr(series_slices.get("SR", []), args.sr_scale)
+    
+    # 3.5) 最終同期：override/scaleの結果を s.pixel_spacing に反映（s.PixelSpacing -> s.pixel_spacing）
+    for series_name, slices in series_slices.items():
+        for s in slices:
+            # まず PixelSpacing 優先でコピー
+            src = getattr(s, "PixelSpacing", None)
+            if src is not None:
+                try:
+                    s.pixel_spacing = (float(src[0]), float(src[1]))
+                    continue
+                except Exception:
+                    pass
+            # 次善策：pixel_spacing が妥当でない(=1.0,1.0 等)なら直す
+            ps = getattr(s, "pixel_spacing", None)
+            if (ps is None) or (len(ps) == 2 and (ps[0] == 1.0 and ps[1] == 1.0)):
+                # どうしても無ければ、シリーズ別の既知値で埋める（LR/HRは指定値、SRは縮尺適用値）
+                if series_name == "LR" and getattr(args, "lr_spacing", None):
+                    s.pixel_spacing = (float(args.lr_spacing[0]), float(args.lr_spacing[1]))
+                elif series_name == "HR" and getattr(args, "hr_spacing", None):
+                    s.pixel_spacing = (float(args.hr_spacing[0]), float(args.hr_spacing[1]))
+                elif series_name == "SR":
+                    # SR は LR を基準に scale で割る
+                    if getattr(args, "lr_spacing", None) and args.sr_scale:
+                        s.pixel_spacing = (
+                            float(args.lr_spacing[0]) / float(args.sr_scale),
+                            float(args.lr_spacing[1]) / float(args.sr_scale),
+                        )
+
 
     # 4) 補正後の pixel_spacing で lookup を作成（この後は常にこれを参照）
     slices_lookup_map: Dict[str, Dict[int, Tuple[float, float]]] = {}
