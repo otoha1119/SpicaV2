@@ -138,45 +138,57 @@ def main() -> None:
     seed_everything(args.seed)
     out_dir = Path(args.out_dir)
     ensure_dir(out_dir)
-    # Load series
+    # Load all series first
     series_dirs = {"LR": Path(args.lr_dir), "SR": Path(args.sr_dir), "HR": Path(args.hr_dir)}
     series_slices: Dict[str, List] = {}
-    for name, d in series_dirs.items():
-        logging.info(f"Loading series {name} from {d}")
-        series_slices[name] = load_series(d)
-        if not series_slices[name]:
+    for series_name, d in series_dirs.items():
+        logging.info(f"Loading series {series_name} from {d}")
+        series_slices[series_name] = load_series(d)
+        if not series_slices[series_name]:
             logging.warning(f"No DICOM slices found in {d}")
-    
-           # --- PixelSpacing の明示オーバーライド（必要時のみ） ---
-        if getattr(args, "lr_spacing", None):
-            apply_spacing_override(series_slices.get("LR", []), args.lr_spacing)
-        if getattr(args, "hr_spacing", None):
-            apply_spacing_override(series_slices.get("HR", []), args.hr_spacing)
-        
+
+    # 1) DICOM PixelSpacing -> s.pixel_spacing にまず写す（初期化）
+    for series_name, slices in series_slices.items():
+        for s in slices:
+            if hasattr(s, "PixelSpacing") and s.PixelSpacing is not None:
+                try:
+                    s.pixel_spacing = (float(s.PixelSpacing[0]), float(s.PixelSpacing[1]))
+                except Exception:
+                    # 壊れている/欠損なら後続の上書きに任せる
+                    pass
+
+    # 2) 明示オーバーライド（必要時のみ）
+    if getattr(args, "lr_spacing", None):
+        apply_spacing_override(series_slices.get("LR", []), args.lr_spacing)
+    if getattr(args, "hr_spacing", None):
+        apply_spacing_override(series_slices.get("HR", []), args.hr_spacing)
+    # SRはDICOMのPixelSpacingが空/未更新なことが多いので、LRの値をベースとしてコピー
+    if getattr(args, "lr_spacing", None):
         apply_spacing_override(series_slices.get("SR", []), args.lr_spacing)
 
-        
-        for name, slices in series_slices.items():
-            for s in slices:
-                if hasattr(s, "PixelSpacing"):
-                    try:
-                        s.pixel_spacing = tuple(float(x) for x in s.PixelSpacing)
-                    except Exception:
-                        pass
-
- 
-
-    # Adjust SR pixel spacing if scale factor provided
+    # 3) SRのスケール適用（pixel_spacing を 1/scale に）
     if args.sr_scale is not None and args.sr_scale > 0.0:
         logging.info(f"Applying SR scale factor {args.sr_scale} to pixel spacing")
         adjust_pixel_spacing_for_sr(series_slices.get("SR", []), args.sr_scale)
-    # Build slice lookup table for pixel spacing per slice (col spacing used for Nyquist)
+
+    # 4) 補正後の pixel_spacing で lookup を作成（この後は常にこれを参照）
     slices_lookup_map: Dict[str, Dict[int, Tuple[float, float]]] = {}
-    for name, slices in series_slices.items():
+    for series_name, slices in series_slices.items():
         lookup = {}
         for s in slices:
             lookup[s.index] = s.pixel_spacing
-        slices_lookup_map[name] = lookup
+        slices_lookup_map[series_name] = lookup
+
+    # （任意の確認ログ）中央値を出して sanity check
+    def _med_col(sp_list):
+        cols = [float(sp[1]) for sp in sp_list if sp and sp[1] > 0]
+        return (np.median(cols) if cols else float("nan"))
+    lr_med = _med_col([s.pixel_spacing for s in series_slices.get("LR", [])])
+    sr_med = _med_col([s.pixel_spacing for s in series_slices.get("SR", [])])
+    hr_med = _med_col([s.pixel_spacing for s in series_slices.get("HR", [])])
+    logging.info(f"[Check] median PixelSpacing col (mm): LR={lr_med:.6f}, SR={sr_med:.6f}, HR={hr_med:.6f}")
+
+
     # ROI selection
     selector = ROISelector(
         roi_width=30,
