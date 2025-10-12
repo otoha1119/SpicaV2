@@ -102,7 +102,8 @@ def plot_mean_mtf(
 
     ax.set_ylabel("MTF")
     ax.set_ylim(0.0, 1.0)
-    ax.set_xlim(0.0, x_common[-1])
+    #ax.set_xlim(0.0, x_common[-1])
+    ax.set_xlim(0.0, 2.0)
     ax.grid(True, alpha=0.3)
     ax.legend()
     fig.tight_layout()
