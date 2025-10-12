@@ -7,7 +7,7 @@ set -euo pipefail
 
 ### ====================== EDIT HERE (デフォルト設定) ====================== ###
 # DICOM ディレクトリ（絶対/相対どちらでもOK）
-LR_DIR="/workspace/DataSet/ImageCAS/001.ImgCast"
+LR_DIR="/workspace/DataSet/ImageCAS/003.ImgCast"
 SR_DIR="/workspace/results/001.ImgCast"
 HR_DIR="/workspace/DataSet/photonCT/PhotonCT1024v2/DICOMSAVE-20240514142921-000"
 

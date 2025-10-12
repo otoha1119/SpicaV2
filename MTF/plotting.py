@@ -1,8 +1,15 @@
-from __future__ import annotations
+"""
+Plotting utilities for MTF curves.
 
+Supports both physical cycles/mm plotting (common band)
+and normalized x-axis (f/fNyquist).
+"""
+
+from __future__ import annotations
 import numpy as np
 import matplotlib.pyplot as plt
 from typing import Dict, List, Tuple
+
 
 def plot_mean_mtf(
     series_mtf: Dict[str, List[Tuple[np.ndarray, np.ndarray]]],
@@ -11,68 +18,80 @@ def plot_mean_mtf(
     draw_nyquist: bool = True,
     normalize_x: bool = False,
 ) -> None:
-    """Plot mean MTF curve for each series and save to file (grayscale-printable)."""
+    """Plot the mean MTF curve for each series and save to file."""
 
-    # ---- Font: Calibriが無い環境でも警告を出さない（DejaVu Sansに固定）----
-    import matplotlib.pyplot as plt
-    plt.rcParams["font.family"] = "DejaVu Sans"
-    plt.rcParams["axes.labelsize"] = 13
-    plt.rcParams["xtick.labelsize"] = 11
-    plt.rcParams["ytick.labelsize"] = 11
-    plt.rcParams["legend.fontsize"] = 11
+    # ---------------------------
+    #  図設定（フォント・サイズなど）
+    # ---------------------------
+    # Calibriが存在しなくてもエラーを出さず自動フォールバック
+    plt.rcParams["font.family"] = "sans-serif"
+    plt.rcParams["font.sans-serif"] = ["DejaVu Sans", "Arial"]
+    fig, ax = plt.subplots(figsize=(7.0, 6.0))  # 縦長にして見やすく
 
-    fig, ax = plt.subplots(figsize=(7.0, 5.0))
-
-    # ---- 白黒対応スタイル（線種で判別）----
-    styles = {
-        "LR": {"color": "black", "linestyle": "--", "linewidth": 1.8, "zorder": 3},
-        "SR": {"color": "black", "linestyle": ":",  "linewidth": 1.8, "zorder": 3},
-        "HR": {"color": "black", "linestyle": "-",  "linewidth": 2.0, "zorder": 3},
+    # 白黒でも区別できるようにラインスタイル変更（全て黒）
+    style_map = {
+        "LR": {"color": "black", "linestyle": "-", "linewidth": 2.0, "label": "LR"},
+        "SR": {"color": "black", "linestyle": "--", "linewidth": 2.0, "label": "SR"},
+        "HR": {"color": "black", "linestyle": ":", "linewidth": 2.0, "label": "HR"},
     }
 
-    # ---- x 軸共通座標 ----
+    # ---------------------------
+    #  X軸スケール設定
+    # ---------------------------
     if normalize_x:
         x_common = np.linspace(0.0, 1.0, 512)
     else:
         nyq_medians = [float(np.median(n)) for n in series_nyquist.values() if n]
-        fmax = 0.95 * float(np.min(nyq_medians)) if nyq_medians else 0.5
-        x_common = np.linspace(0.0, fmax, 512)
+        fmax = 1.05 * float(np.max(nyq_medians)) if nyq_medians else 0.5
+        x_common = np.linspace(0.0, fmax, 1024)
 
-    # ---- 各シリーズ平均 ----
+    # ---------------------------
+    #  曲線プロット
+    # ---------------------------
     for name, curves in series_mtf.items():
         if not curves:
             continue
+
         nyqs = series_nyquist.get(name, [])
         interp_list = []
         for i, (freq, mtf) in enumerate(curves):
             freq = np.asarray(freq, dtype=float)
-            mtf  = np.asarray(mtf,  dtype=float)
+            mtf = np.asarray(mtf, dtype=float)
+
+            # Nyquist取得
+            nyq = float(nyqs[i]) if i < len(nyqs) else (float(np.median(nyqs)) if nyqs else 0.0)
+            if nyq <= 0:
+                continue
+
             if normalize_x:
-                nyq = float(nyqs[i]) if i < len(nyqs) else (float(np.median(nyqs)) if nyqs else 0.0)
-                if nyq <= 0:
-                    continue
                 f_norm = freq / nyq
                 mask = (f_norm >= 0.0) & (f_norm <= 1.0)
                 if mask.sum() < 4:
                     continue
                 m_i = np.interp(x_common, f_norm[mask], mtf[mask], left=np.nan, right=np.nan)
+                m_i[x_common > 1.0] = np.nan  # 正規化ではx>1をNaN
             else:
-                mask = (freq >= 0.0) & (freq <= x_common[-1])
+                mask = (freq >= 0.0) & (freq <= nyq)  # Nyquistまでで切る
                 if mask.sum() < 4:
                     continue
                 m_i = np.interp(x_common, freq[mask], mtf[mask], left=np.nan, right=np.nan)
+                m_i[x_common > nyq] = np.nan  # 超過域をNaN
+
             interp_list.append(m_i)
 
         if not interp_list:
             continue
 
-        mean = np.nanmean(np.vstack(interp_list), axis=0)
-        s = styles.get(name, {"color": "black", "linestyle": "-", "linewidth": 2.0, "zorder": 3})
-        ax.plot(x_common, mean, label=name, **s)
+        arr = np.vstack(interp_list)
+        mean = np.nanmean(arr, axis=0)
+        ax.plot(x_common, mean, **style_map[name])
 
-    # ---- ラベル & ガイド線 ----
+    # ---------------------------
+    #  軸・ガイド線
+    # ---------------------------
     if normalize_x:
         ax.set_xlabel("Normalized Spatial Frequency (f / f_Nyquist)")
+        ax.set_xlim(0.0, 1.0)
         if draw_nyquist:
             ax.axvline(1.0, color="0.6", linestyle="--", linewidth=1.0, alpha=0.5, zorder=1)
     else:
@@ -82,25 +101,27 @@ def plot_mean_mtf(
                 if nyqs:
                     nyq_med = float(np.median(nyqs))
                     ax.axvline(nyq_med, color="0.6", linestyle="--", linewidth=1.0, alpha=0.5, zorder=1)
+        ax.set_xlim(0.0, x_common[-1])
 
     ax.set_ylabel("MTF")
     ax.set_ylim(0.0, 1.0)
-
-    # ---- グリッド（実線・薄め・細め、点線は使わない）----
     ax.grid(True, linestyle="-", linewidth=0.6, alpha=0.15)
-    ax.minorticks_off()
 
-    # ---- 凡例：右上“やや内側”、白背景で読みやすく ----
-    ax.legend(
-        frameon=True,
+    # ---------------------------
+    #  凡例（右上・枠線付き）
+    # ---------------------------
+    legend = ax.legend(
         loc="upper right",
-        bbox_to_anchor=(0.95, 0.95),  # ← 右上から少し内側
-        fancybox=True,
-        framealpha=0.9,
+        fontsize=13,
+        frameon=True,
         facecolor="white",
-        edgecolor="black",
+        framealpha=0.9,
+        edgecolor="black"
     )
+    frame = legend.get_frame()
+    frame.set_linewidth(1.5)
+    frame.set_edgecolor("black")
 
     fig.tight_layout()
-    fig.savefig(out_path, dpi=300, bbox_inches="tight")
+    fig.savefig(out_path, dpi=200)
     plt.close(fig)
