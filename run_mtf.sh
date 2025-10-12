@@ -16,7 +16,7 @@ OUT_DIR="/workspace/results"
 
 # 処理パラメータ
 NUM_ROIS=150            # 1シリーズあたり抽出するROI数
-DRAW_NYQUIST=1          # 1=Nyquist縦線を描画, 0=非表示
+DRAW_NYQUIST=0          # 1=Nyquist縦線を描画, 0=非表示
 USE_CUDA=1              # 1=CUDA使用(可能なら), 0=CPU強制
 GPU_IDS="0"             # 例: "0", "0,1", "-1"(CPU扱い)
 
