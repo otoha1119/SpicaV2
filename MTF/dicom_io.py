@@ -138,3 +138,46 @@ def apply_spacing_override(slices, spacing_tuple):
             # 形式が違うなどで失敗したら無視
             pass
     logging.info(f"Applied PixelSpacing override to {n} slices -> [{row}, {col}] mm")
+
+
+def adjust_pixel_spacing_for_sr(slices, scale: float):
+    """
+    SRシリーズに対して PixelSpacing を scale 倍『小さく』する（= 解像度 up に合わせる）。
+    例: scale=2.0 のとき、0.30mm -> 0.15mm に補正。
+    DICOMの PixelSpacing は [row_spacing_mm, col_spacing_mm]。
+    """
+    import logging
+
+    if not slices:
+        logging.warning("adjust_pixel_spacing_for_sr: no SR slices; skip.")
+        return
+    try:
+        s = float(scale)
+        if not (s > 0.0):
+            logging.warning("adjust_pixel_spacing_for_sr: invalid scale; skip.")
+            return
+    except Exception:
+        logging.warning("adjust_pixel_spacing_for_sr: invalid scale type; skip.")
+        return
+
+    n = 0
+    for ds in slices:
+        try:
+            ps = getattr(ds, "PixelSpacing", None)
+            if isinstance(ps, (list, tuple)) and len(ps) == 2:
+                row = float(ps[0]) / s
+                col = float(ps[1]) / s
+            else:
+                # メタが無い場合は 1.0 mm を仮置きしてから割る（警告）
+                row = 1.0 / s
+                col = 1.0 / s
+                logging.warning(
+                    "SR PixelSpacing missing; assumed 1.0 mm before scaling."
+                )
+            ds.PixelSpacing = [row, col]
+            n += 1
+        except Exception:
+            # 1スライス失敗しても全体は続行
+            continue
+
+    logging.info(f"Adjusted SR PixelSpacing by factor {s} for {n} slices.")
