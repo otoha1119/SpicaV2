@@ -1,305 +1,204 @@
-"""
-ROI selection for natural high‑contrast edges in CT slices.
-
-This module implements an automated approach to extract a set of
-rectangular regions of interest (ROIs) around slanted high‑contrast edges
-from CT slices.  The goal is to identify candidate edges in each
-slice that meet certain geometric and contrast criteria, then sample
-ROIs oriented along the detected edges.  The design follows the
-recommendations outlined in ISO 12233 for slanted‑edge MTF estimation
-and the literature on CT resolution assessment.
-
-The primary function exposed by this module is ``select_rois``.  It
-takes a list of DicomSlice objects and returns a list of ROIs along
-with metadata describing their location and orientation.
-
-Edge detection uses Canny followed by computation of gradient
-orientation from Sobel filters.  Candidate edge pixels whose
-orientation is within a specified angular range (e.g. 5°–15° relative
-to horizontal or vertical) are considered.  For each candidate, a
-small patch is rotated such that the edge is vertical, and a
-rectangular ROI is extracted.  The mean intensities on either side of
-the edge are compared to ensure sufficient contrast (ΔHU threshold).
-ROIs are stratified by axial location and orientation when sampling to
-provide a balanced distribution across the dataset.
-"""
-
 from __future__ import annotations
-
 import logging
 from dataclasses import dataclass
-from pathlib import Path
 from typing import List, Tuple
-
 import numpy as np
-import cv2  # type: ignore
-
-from .dicom_io import DicomSlice
-from .utils import bin_edges_to_groups, stratified_sample
-
+import cv2
 
 @dataclass
 class ROI:
-    """A data container holding an ROI and associated metadata."""
-    series_name: str  # 'LR', 'SR', or 'HR'
+    series_name: str
     slice_index: int
-    slice_filename: Path
-    roi_image: np.ndarray  # shape (height, width), orientation‑aligned
-    orientation_deg: float  # original edge orientation in degrees (0=horiz)
-    delta_hu: float  # contrast difference across edge (absolute)
-    group: int  # stratification group index
-
+    slice_filename: str
+    roi_image: np.ndarray
+    orientation_deg: float
+    delta_hu: float
+    group: int
 
 class ROISelector:
-    """Select ROIs from a list of DicomSlice objects."""
-
     def __init__(
         self,
         roi_width: int = 40,
-        roi_height: int = 40,
-        angle_min: float = 5.0,
-        angle_max: float = 15.0,
+        roi_height: int = 100,
+        angle_min: float = 6.0,
+        angle_max: float = 12.0,
         delta_hu_threshold: float = 200.0,
+        edge_vertical_tol_deg: float = 2.5,
+        min_vertical_span_ratio: float = 0.92,
+        require_single_edge: bool = True,
+        center_tolerance_ratio: float = 0.08,
     ):
-        """
-        Parameters
-        ----------
-        roi_width : int, optional
-            Horizontal size of the rotated ROI in pixels.  A more square
-            footprint tends to produce a cleaner edge spread function when
-            averaging across the long dimension.  The default of 40 was
-            chosen to avoid extremely elongated ROIs that span many rows.
-        roi_height : int, optional
-            Vertical size of the rotated ROI in pixels.  Historically this
-            was set quite large (e.g. 100 pixels) which caused the edge to
-            only intersect a small portion of the ROI.  A moderate value
-            (default 40) keeps the edge within the field of view and
-            avoids averaging over unrelated image regions.
-        angle_min, angle_max : float, optional
-            Minimum and maximum deviation from the principal axes (in
-            degrees) used to accept candidate edges.  Only edges whose
-            orientation differs from being purely horizontal or purely
-            vertical by between these bounds are considered.
-        delta_hu_threshold : float, optional
-            Minimum absolute intensity difference across the edge (in HU)
-            required for a candidate to be accepted.  Low contrast edges
-            are rejected.
-        """
         self.roi_width = roi_width
         self.roi_height = roi_height
         self.angle_min = angle_min
         self.angle_max = angle_max
         self.delta_hu_threshold = delta_hu_threshold
+        self.edge_vertical_tol_deg = edge_vertical_tol_deg
+        self.min_vertical_span_ratio = min_vertical_span_ratio
+        self.require_single_edge = require_single_edge
+        self.center_tolerance_ratio = center_tolerance_ratio
 
-    def _extract_roi_from_candidate(
-        self,
-        img: np.ndarray,
-        center: Tuple[int, int],
-        orientation: float,
-    ) -> np.ndarray:
-        """
-        Extract a rotated ROI from the image centred at `center` and oriented
-        such that the detected edge becomes vertical.  The ROI is returned
-        axis‑aligned (height x width) with dimensions (roi_height, roi_width).
-
-        Parameters
-        ----------
-        img : np.ndarray
-            The input image (2D array).
-        center : Tuple[int, int]
-            The row and column index of the candidate edge pixel in the
-            original image.
-        orientation : float
-            The edge orientation in degrees relative to the x‑axis (0° means
-            horizontal edge).  The patch is rotated by (90° − orientation)
-            so that the edge becomes vertical.
-
-        Returns
-        -------
-        np.ndarray
-            A rotated ROI of shape (roi_height, roi_width) oriented such
-            that the edge is vertical.
-        """
-        row, col = center
-        # Determine patch size: ensure rotated ROI fits inside patch.
-        patch_side = int(np.ceil(np.hypot(self.roi_width, self.roi_height))) + 4
-        # Clip patch centre to avoid going out of bounds
-        half = patch_side // 2
-        # Get patch from original image
+    def _extract_roi_from_candidate(self, img: np.ndarray, rc: Tuple[int, int], angle_deg: float) -> np.ndarray | None:
+        r, c = rc
         h, w = img.shape
-        # Coordinates for subpixel extraction are (x,y) where x is col, y is row
-        if not (half <= col < w - half and half <= row < h - half):
-            return None  # type: ignore
-        patch = cv2.getRectSubPix(img, (patch_side, patch_side), (float(col), float(row)))
-        # Rotate patch: rotation angle = 90 − orientation
-        rot_angle = 90.0 - orientation
-        M = cv2.getRotationMatrix2D((patch_side / 2.0, patch_side / 2.0), rot_angle, 1.0)
-        rotated = cv2.warpAffine(
-            patch,
-            M,
-            (patch_side, patch_side),
-            flags=cv2.INTER_LINEAR,
-            borderMode=cv2.BORDER_REFLECT_101,
-        )
-        # Extract aligned ROI from rotated patch (width x height)
-        roi = cv2.getRectSubPix(
-            rotated,
-            (self.roi_width, self.roi_height),
-            (patch_side / 2.0, patch_side / 2.0),
-        )
+        # 回転して「エッジが縦」になるように補正
+        M = cv2.getRotationMatrix2D((c, r), -angle_deg, 1.0)
+        rotated = cv2.warpAffine(img, M, (w, h), flags=cv2.INTER_LINEAR)
+        # 回転後の中心近傍を切り出す（正味は候補画素周り）
+        x1 = int(c - self.roi_width // 2)
+        y1 = int(r - self.roi_height // 2)
+        x2 = x1 + self.roi_width
+        y2 = y1 + self.roi_height
+        if x1 < 0 or y1 < 0 or x2 > w or y2 > h:
+            return None
+        roi = rotated[y1:y2, x1:x2]
         return roi
 
     def _compute_delta_hu(self, roi: np.ndarray) -> float:
-        """Compute the absolute HU difference between left and right sides of the ROI.
-
-        The ROI is assumed to be oriented such that the edge is vertical
-        and runs down the middle of the ROI.  We compute the mean
-        intensity in the leftmost 1/3 and rightmost 1/3 of the ROI and
-        return the absolute difference.
-        """
-        if roi is None:
-            return 0.0
+        # 左右 1/3 の平均差でコントラストをざっくり推定
         h, w = roi.shape
-        if w < 3:
-            return 0.0
-        third = w // 3
-        left = roi[:, :third]
-        right = roi[:, -third:]
-        mean_left = float(np.mean(left))
-        mean_right = float(np.mean(right))
-        return abs(mean_right - mean_left)
+        w3 = max(1, w // 3)
+        left_mean = float(np.mean(roi[:, :w3]))
+        right_mean = float(np.mean(roi[:, -w3:]))
+        return abs(right_mean - left_mean)
 
-    def select_rois(
-        self,
-        slices: List[DicomSlice],
-        series_name: str,
-        num_rois: int,
-    ) -> List[ROI]:
-        """
-        Select a set of ROIs from a list of DICOM slices.
-
-        Parameters
-        ----------
-        slices : list of DicomSlice
-            The input slices for a single series (LR, SR or HR).
-        series_name : str
-            Name of the series (used in ROI metadata).
-        num_rois : int
-            Desired number of ROIs to extract.
-
-        Returns
-        -------
-        list of ROI
-            The selected ROIs.
-
-        Notes
-        -----
-        - Candidates are generated from edges detected via Canny and
-          filtered by gradient orientation.  The process stops once a
-          multiple of `num_rois` candidates have been considered to
-          prevent unbounded processing time.
-        - The final selection uses stratified sampling across three
-          axial regions (bottom/middle/top) and two orientation
-          categories (horizontal‑like or vertical‑like) to balance the
-          distribution of ROIs.  If stratification fails to fill all
-          requested slots, a random subset of the remaining candidates
-          is used.
-        """
-        if num_rois <= 0:
-            return []
+    def select_rois(self, slices: List, series_name: str, num_rois: int) -> List[ROI]:
         candidates: List[ROI] = []
-        # Determine slice bins for stratification
+        if not slices:
+            return candidates
         n_slices = len(slices)
-        if n_slices == 0:
-            return []
-        # We map slice index to one of three axial bins: [0,1/3), [1/3,2/3), [2/3,1]
-        slice_bin_edges = [0.0, 1.0 / 3.0, 2.0 / 3.0, 1.0 + 1e-6]
-        # Process slices sequentially and gather candidates until we have enough
-        max_candidates = num_rois * 10  # gather at most 10× more candidates than needed
+        # 層別用（軸方向×水平/垂直様）
+        slice_bin_edges = np.linspace(0.0, 1.0, 6)  # 5 bins
+
         for sl in slices:
-            if len(candidates) >= max_candidates:
-                break
-            img = sl.pixel_array
-            # Convert to 8‑bit for edge detection; scale and clamp values
-            # We'll scale intensities to [0,255] using percentiles to be robust to outliers
+            # スライス画像の取得（属性フォールバック）
+            src = getattr(sl, "roi_image", None) or getattr(sl, "image", None) or getattr(sl, "array", None)
+            if src is None:
+                raise AttributeError("DicomSlice does not have roi_image/image/array.")
+            img = src.astype(np.float32)
+
+            # 8-bit化
             p2, p98 = np.percentile(img, [2, 98])
             if p98 - p2 < 1e-3:
                 img_8 = np.zeros_like(img, dtype=np.uint8)
             else:
                 img_clipped = np.clip(img, p2, p98)
                 img_8 = (((img_clipped - p2) / (p98 - p2)) * 255.0).astype(np.uint8)
-            # Edge detection
+
+            # Canny & 勾配角
             edges = cv2.Canny(img_8, 50, 150, apertureSize=3)
-            # Gradient orientation (edge orientation is gradient+90)
             sobelx = cv2.Sobel(img_8, cv2.CV_64F, 1, 0, ksize=3)
             sobely = cv2.Sobel(img_8, cv2.CV_64F, 0, 1, ksize=3)
-            # gradient orientation in degrees (0<=angle<360)
             magnitude, grad_angle = cv2.cartToPolar(sobelx, sobely, angleInDegrees=True)
-            # Iterate through edge pixels randomly to avoid cluster bias
+
             coords = np.column_stack(np.where(edges > 0))
             rng = np.random.default_rng()
             rng.shuffle(coords)
+
             for (r, c) in coords:
-                # Determine edge orientation relative to horizontal
-                # The orientation of the edge is perpendicular to gradient direction
-                angle = (float(grad_angle[r, c]) + 90.0) % 180.0  # wrap to [0,180)
-                # Compute deviation from nearest horizontal (0 deg) and vertical (90 deg)
+                angle = (float(grad_angle[r, c]) + 90.0) % 180.0  # エッジ角
                 diff_h = min(abs(angle - 0.0), abs(angle - 180.0))
                 diff_v = abs(angle - 90.0)
-                # Minimum deviation from either axis
                 min_diff = min(diff_h, diff_v)
                 if min_diff < self.angle_min or min_diff > self.angle_max:
                     continue
-                # Determine orientation category: 0 for horizontal‑like, 1 for vertical‑like
-                orientation_category = 0 if diff_h <= diff_v else 1
-                # Extract ROI oriented such that edge becomes vertical
+
                 roi_img = self._extract_roi_from_candidate(img, (r, c), angle)
                 if roi_img is None:
                     continue
+
+                # --- 一本＆上下貫通 & 中央通過 & ほぼ縦 ---
+                ok = True
+                if self.require_single_edge:
+                    p2_, p98_ = np.percentile(roi_img, [2, 98])
+                    if p98_ - p2_ < 1e-3:
+                        roi8 = np.zeros_like(roi_img, dtype=np.uint8)
+                    else:
+                        roi8 = np.clip((roi_img - p2_) / (p98_ - p2_), 0, 1)
+                        roi8 = (roi8 * 255).astype(np.uint8)
+
+                    e = cv2.Canny(roi8, 50, 150, apertureSize=3)
+                    lines = cv2.HoughLinesP(
+                        e, 1, np.pi / 180,
+                        threshold=20,
+                        minLineLength=int(self.roi_height * self.min_vertical_span_ratio),
+                        maxLineGap=5
+                    )
+                    h_roi, w_roi = roi8.shape
+                    vtol = np.deg2rad(self.edge_vertical_tol_deg)
+                    valid_lines = []
+                    if lines is not None:
+                        for x1, y1, x2, y2 in lines.reshape(-1, 4):
+                            dx, dy = (x2 - x1), (y2 - y1)
+                            ang = abs(np.arctan2(dy, dx))  # 0=横, π/2=縦
+                            if abs(ang - np.pi / 2) > vtol:
+                                continue
+                            ymin, ymax = min(y1, y2), max(y1, y2)
+                            span_ok = (ymin <= int(h_roi * 0.05)) and (ymax >= int(h_roi * 0.95))
+                            if not span_ok:
+                                continue
+                            x_mid = 0.5 * (x1 + x2)
+                            center_ok = (abs(x_mid - (w_roi - 1) / 2.0) <= w_roi * self.center_tolerance_ratio)
+                            if not center_ok:
+                                continue
+                            valid_lines.append((x1, y1, x2, y2, ang))
+                    if len(valid_lines) != 1:
+                        ok = False
+                    else:
+                        _, _, _, _, ang = valid_lines[0]
+                        if abs(ang - np.pi / 2) > vtol:
+                            ok = False
+                if not ok:
+                    continue
+
                 delta_hu = self._compute_delta_hu(roi_img)
                 if delta_hu < self.delta_hu_threshold:
                     continue
-                # Determine axial bin
+
                 relative_pos = sl.index / max(1, n_slices - 1)
-                axial_bin = None
-                for idx, (low, high) in enumerate(zip(slice_bin_edges[:-1], slice_bin_edges[1:])):
-                    if low <= relative_pos < high:
-                        axial_bin = idx
+                axial_bin = 0
+                for idx_bin in range(len(slice_bin_edges) - 1):
+                    if slice_bin_edges[idx_bin] <= relative_pos < slice_bin_edges[idx_bin + 1]:
+                        axial_bin = idx_bin
                         break
-                if axial_bin is None:
-                    axial_bin = len(slice_bin_edges) - 2
-                # Combined group index: axial_bin * 2 + orientation_category
+                orientation_category = 0 if diff_h <= diff_v else 1
                 group = axial_bin * 2 + orientation_category
+
                 candidates.append(
                     ROI(
                         series_name=series_name,
                         slice_index=sl.index,
-                        slice_filename=sl.filename,
+                        slice_filename=getattr(sl, "filename", ""),
                         roi_image=roi_img.astype(np.float32),
                         orientation_deg=angle,
                         delta_hu=delta_hu,
                         group=group,
                     )
                 )
-                if len(candidates) >= max_candidates:
-                    break
-            if len(candidates) >= max_candidates:
+                if len(candidates) >= num_rois * 5:
+                    break  # 余裕をもって収集後に層別抽出
+            if len(candidates) >= num_rois * 5:
                 break
-        # If no candidates found, return empty
+
         if not candidates:
             logging.warning(f"No valid ROI candidates found for series {series_name}")
             return []
-        # Stratified sampling
+
+        # 簡易層別サンプリング
         indices = list(range(len(candidates)))
         groups = [roi.group for roi in candidates]
-        selected_indices = stratified_sample(indices, groups, num_rois)
-        # If not enough selected, fill with random
-        if len(selected_indices) < num_rois:
-            remaining = list(set(indices) - set(selected_indices))
-            rng = np.random.default_rng()
-            extra = rng.choice(remaining, size=min(num_rois - len(selected_indices), len(remaining)), replace=False)
-            selected_indices.extend(extra.tolist())
-        # Clip to requested number
-        selected_indices = selected_indices[:num_rois]
-        selected_rois = [candidates[i] for i in selected_indices]
-        return selected_rois
+        # 均等抽出（不足分はランダム補充）
+        per_group = max(1, num_rois // max(1, len(set(groups))))
+        selected = []
+        rng = np.random.default_rng()
+        for g in sorted(set(groups)):
+            idxs = [i for i in indices if groups[i] == g]
+            rng.shuffle(idxs)
+            selected.extend(idxs[:per_group])
+        if len(selected) < num_rois:
+            remain = list(set(indices) - set(selected))
+            rng.shuffle(remain)
+            selected.extend(remain[: (num_rois - len(selected))])
+
+        selected = selected[:num_rois]
+        return [candidates[i] for i in selected]

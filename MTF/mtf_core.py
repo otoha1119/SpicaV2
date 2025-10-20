@@ -1,53 +1,37 @@
 """
-Core MTF computation routines.
-
-This module contains functions to convert a rotated ROI into a
-modulation transfer function (MTF) curve using the slanted‑edge
-approach.  It relies on 1D oversampling of the edge spread function
-(ESF), smoothing, differentiation to obtain the line spread function
-(LSF), application of a Hann window, and FFT.  The resulting MTF is
-normalised at zero frequency.  Additional helper functions compute
-standard metrics such as MTF50, MTF10 and the area under the MTF
-curve up to a specified frequency.
+Core MTF computation routines (slanted-edge).
 """
 
 from __future__ import annotations
-
-import logging
-from typing import Optional, Tuple
-
+from typing import Tuple
 import numpy as np
-# skimage may not be installed in all environments.  Attempt to import
-# gaussian; if unavailable, fallback smoothing is implemented in
-# `compute_mtf_for_roi`.
+
+# skimage の gaussian が無い環境でも動くようにフォールバック
 try:
     from skimage.filters import gaussian  # type: ignore
 except Exception:
     gaussian = None  # type: ignore
 
-from .utils import next_power_of_two
+
+def next_power_of_two(n: int) -> int:
+    if n <= 1:
+        return 1
+    p = 1
+    while p < n:
+        p <<= 1
+    return p
 
 
 def _find_threshold_freq(freq: np.ndarray, mtf: np.ndarray, threshold: float) -> float:
-    """
-    Find the frequency at which the MTF crosses a given threshold.
-
-    Linear interpolation is used between the two bins around the threshold.
-    If the MTF never falls below the threshold, the last frequency is returned.
-    """
-    if len(freq) != len(mtf):
-        raise ValueError("freq and mtf lengths must match")
     for i in range(1, len(mtf)):
         if (mtf[i - 1] >= threshold and mtf[i] <= threshold) or (mtf[i - 1] <= threshold and mtf[i] >= threshold):
-            # Linear interpolation
             f0, f1 = freq[i - 1], freq[i]
             m0, m1 = mtf[i - 1], mtf[i]
             if abs(m1 - m0) < 1e-12:
                 return float(f0)
             ratio = (threshold - m0) / (m1 - m0)
             return float(f0 + ratio * (f1 - f0))
-    # If threshold never crossed, return last frequency
-    return float(freq[-1])
+    return float(freq[-1]) if len(freq) else 0.0
 
 
 def compute_mtf_for_roi(
@@ -56,163 +40,79 @@ def compute_mtf_for_roi(
     oversample_factor: int = 4,
     zero_pad_factor: int = 4,
     use_cuda: bool = False,
-    row_fraction: float = 0.5,
+    row_fraction: float = 0.6,
+    reduce_mode: str = "median",   # 既定: median で安定化
+    trim_alpha: float = 0.1,
 ) -> Tuple[np.ndarray, np.ndarray, float, float]:
     """
-    Compute the MTF curve for a single ROI.
-
-    Parameters
-    ----------
-    roi : np.ndarray
-        Rotated ROI of shape (height, width) oriented so that the edge is vertical.
-    pixel_spacing : tuple (row_spacing, col_spacing) in mm/pixel
-        Pixel spacing for the slice from which this ROI originates.  Only the
-        along‑row spacing (normal to the edge) is used here.  The MTF is
-        expressed per millimetre using this spacing.
-    oversample_factor : int, optional
-        Factor by which to oversample the ESF.  Higher values produce
-        smoother MTFs at the cost of computation time.
-    zero_pad_factor : int, optional
-        Multiplier controlling zero padding applied prior to the FFT.  The
-        length of the LSF after windowing is multiplied by this factor and
-        rounded up to the next power of two.  A larger value gives finer
-        frequency resolution.
-    use_cuda : bool, optional
-        If True and a CUDA‑enabled PyTorch installation is available, the
-        FFT will be computed on the GPU.  Otherwise NumPy is used.
-
-    row_fraction : float, optional
-        Fraction of the ROI height to use when forming the edge spread
-        function.  Only the central portion of the ROI (e.g. 0.5 for
-        50%) is averaged across to compute the ESF.  Values outside
-        (0,1] cause the full height to be used.  Using a smaller
-        fraction helps mitigate the effect of edges that do not span
-        the entire height of the ROI.
-
-    Returns
-    -------
-    freq : np.ndarray
-        Array of spatial frequencies (cycles/mm) corresponding to the MTF samples.
-    mtf : np.ndarray
-        Normalised MTF values (0–1).
-    mtf50 : float
-        Frequency (cycles/mm) at which the MTF drops to 0.5.
-    mtf10 : float
-        Frequency (cycles/mm) at which the MTF drops to 0.1.
+    回転済み ROI（エッジが縦）から MTF を算出。
     """
     if roi.ndim != 2:
         raise ValueError("ROI must be 2D")
-    # Compute ESF by averaging across a central fraction of the ROI height.
-    # The slanted-edge method assumes the edge traverses the ROI from top to bottom.
-    # In practice, when the ROI is very tall the edge may only cross a portion of it.
-    # To avoid contaminating the ESF with unrelated pixel values, only the central
-    # fraction of rows (specified by `row_fraction`) are averaged.  A value of 0.5
-    # corresponds to averaging the middle 50% of rows.  Values outside (0,1] fall
-    # back to using the full height.
     h, w = roi.shape
-    rf = float(row_fraction)
-    if 0.0 < rf < 1.0:
-        h_sub = int(max(1, round(h * rf)))
-        start_row = (h - h_sub) // 2
-        end_row = start_row + h_sub
-        sub_roi = roi[start_row:end_row, :]
+
+    # --- ROI中央帯のみ使用 & 堅牢な縮約で ESF 作成 ---
+    frac = float(np.clip(row_fraction, 1e-3, 1.0))
+    band = int(max(1, round(h * frac)))
+    y0 = (h - band) // 2
+    slab = roi[y0:y0 + band, :]
+
+    if reduce_mode == "median":
+        esf = np.median(slab, axis=0)
+    elif reduce_mode == "trimmed":
+        alpha = float(np.clip(trim_alpha, 0.0, 0.49))
+        k_low = int(np.floor(alpha * slab.shape[0]))
+        k_high = slab.shape[0] - int(np.floor(alpha * slab.shape[0]))
+        sort_slab = np.sort(slab, axis=0)
+        core = sort_slab[k_low:k_high, :]
+        esf = np.mean(core, axis=0)
     else:
-        sub_roi = roi
-    esf = np.mean(sub_roi, axis=0).astype(np.float64)
-    # Oversample the ESF by interpolation
-    w = len(esf)
-    x_original = np.arange(w)
-    x_interp = np.linspace(0, w - 1, w * oversample_factor, endpoint=True)
+        esf = np.mean(slab, axis=0)
+    esf = esf.astype(np.float64)
+
+    # --- ESF のオーバーサンプル ---
+    x_original = np.arange(len(esf))
+    x_interp = np.linspace(0, len(esf) - 1, max(2, len(esf) * oversample_factor), endpoint=True)
     esf_oversampled = np.interp(x_interp, x_original, esf)
-    # Smooth ESF with a small Gaussian kernel to reduce noise.  If skimage
-    # is unavailable, fall back to a simple moving average.  The
-    # smoothing is important for visual clarity and to reduce ringing
-    # artefacts when differentiating to obtain the LSF.
-    try:
+
+    # --- 平滑化（skimage 無ければ移動平均） ---
+    if gaussian is not None:
         esf_smooth = gaussian(esf_oversampled, sigma=1.0, mode="nearest")
-    except Exception:
-        # Simple moving average fallback
-        kernel_size = 5
-        kernel = np.ones(kernel_size, dtype=float) / float(kernel_size)
-        # Pad reflect to avoid edge shrinkage
-        pad = kernel_size // 2
-        padded = np.pad(esf_oversampled, pad_width=pad, mode="reflect")
-        esf_smooth = np.convolve(padded, kernel, mode="valid")
-    # Compute LSF (first derivative)
+    else:
+        k = max(5, int(oversample_factor * 3))
+        ker = np.ones(k, dtype=float) / k
+        esf_smooth = np.convolve(esf_oversampled, ker, mode="same")
+
+    # --- LSF → Hann → rFFT ---
     lsf = np.diff(esf_smooth)
-    # Apply Hann window to reduce spectral leakage
     if len(lsf) < 2:
-        raise ValueError("LSF length too short")
+        raise ValueError("LSF too short")
     window = np.hanning(len(lsf))
     lsf_windowed = lsf * window
-    # Zero‑pad LSF to increase frequency resolution
-    n_fft = next_power_of_two(int(len(lsf_windowed) * zero_pad_factor))
-    # Compute FFT either on CPU or GPU
-    mtf: np.ndarray
-    try:
-        if use_cuda:
-            import torch  # type: ignore
 
-            if torch.cuda.is_available():
-                device = torch.device("cuda")
-                lsf_tensor = torch.from_numpy(lsf_windowed.astype(np.float32)).to(device)
-                pad_len = n_fft - lsf_tensor.shape[0]
-                lsf_tensor = torch.cat([lsf_tensor, torch.zeros(pad_len, device=device)])
-                mtf_complex = torch.fft.rfft(lsf_tensor)
-                mtf = torch.abs(mtf_complex).cpu().numpy()
-            else:
-                raise RuntimeError("CUDA requested but not available")
-        else:
-            raise RuntimeError("CPU path")
-    except Exception:
-        # Fallback to NumPy CPU implementation
-        lsf_padded = np.pad(lsf_windowed, (0, n_fft - len(lsf_windowed)), mode="constant")
-        mtf_complex = np.fft.rfft(lsf_padded)
-        mtf = np.abs(mtf_complex)
-    # Frequency axis in cycles/mm.  Sample spacing (mm) = pixel_spacing[1] / oversample_factor
-    # Pixel spacing: (row_spacing, col_spacing).  The normal direction corresponds to columns.
+    n_fft = next_power_of_two(int(len(lsf_windowed) * zero_pad_factor))
+    lsf_padded = np.pad(lsf_windowed, (0, n_fft - len(lsf_windowed)), mode="constant")
+    mtf_complex = np.fft.rfft(lsf_padded)
+    mtf = np.abs(mtf_complex)
+
+    # 周波数軸（cycles/mm）
     col_spacing = float(pixel_spacing[1])
     sample_spacing = col_spacing / float(oversample_factor)
     freq = np.fft.rfftfreq(n_fft, d=sample_spacing)
-    # Normalise MTF at DC (index 0)
-    if mtf[0] != 0.0:
+
+    # DC 正規化
+    if mtf.size > 0 and mtf[0] != 0.0:
         mtf = mtf / mtf[0]
-    # Interpolate MTF50 and MTF10
+
     mtf50 = _find_threshold_freq(freq, mtf, 0.5)
     mtf10 = _find_threshold_freq(freq, mtf, 0.1)
     return freq, mtf, mtf50, mtf10
 
 
-def compute_auc(
-    freq: np.ndarray,
-    mtf: np.ndarray,
-    f_max: float,
-) -> float:
-    """
-    Compute the area under the MTF curve up to the specified maximum frequency.
-
-    Parameters
-    ----------
-    freq : np.ndarray
-        Frequencies corresponding to the MTF values (cycles/mm).
-    mtf : np.ndarray
-        MTF values (normalised between 0 and 1).
-    f_max : float
-        Upper limit of integration (cycles/mm).  Values beyond this limit are ignored.
-
-    Returns
-    -------
-    float
-        The area under the MTF curve up to f_max.
-    """
-    # Select portion of the MTF within range
+def compute_auc(freq: np.ndarray, mtf: np.ndarray, f_max: float) -> float:
     if f_max <= 0 or len(freq) == 0:
         return 0.0
     mask = freq <= f_max
     if not np.any(mask):
         return 0.0
-    freq_sub = freq[mask]
-    mtf_sub = mtf[mask]
-    # Trapezoidal integration
-    auc = np.trapz(mtf_sub, freq_sub)
-    return float(auc)
+    return float(np.trapz(mtf[mask], freq[mask]))
