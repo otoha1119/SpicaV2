@@ -56,6 +56,25 @@ def parse_args() -> argparse.Namespace:
         metavar=("ROW", "COL"),
         help="Override HR PixelSpacing (mm), e.g., --hr_spacing 0.136719 0.136719",
     )
+    # ROI configuration
+    parser.add_argument(
+        "--roi_width",
+        type=int,
+        default=40,
+        help="Width of the rotated ROI in pixels (default: 40). A more square ROI reduces averaging over unrelated regions.",
+    )
+    parser.add_argument(
+        "--roi_height",
+        type=int,
+        default=40,
+        help="Height of the rotated ROI in pixels (default: 40). Smaller values avoid elongated ROIs that may not contain the edge across the full height.",
+    )
+    parser.add_argument(
+        "--esf_frac",
+        type=float,
+        default=0.5,
+        help="Fraction (0–1) of the ROI height used to compute the ESF. Only the central portion of the ROI will be used. Default is 0.5 (central 50%).",
+    )
     # --- NEW: export examples (ROI/ESF/LSF/MTF) ---
     parser.add_argument("--export_examples", type=int, choices=[0, 1], default=0,
                         help="Save example ROI/ESF/LSF/MTF PNGs (0=off, 1=on)")
@@ -70,15 +89,39 @@ def compute_metrics_for_rois(
     slices_lookup: Dict[int, Tuple[float, float]],
     use_cuda: bool,
     global_f_max: float,
+    row_fraction: float = 0.5,
 ) -> Tuple[List[Tuple[np.ndarray, np.ndarray]], List[float], pd.DataFrame]:
     """
     Compute MTF metrics for each ROI in a series.
 
+    The function iterates over the supplied ROIs, looks up the
+    corresponding pixel spacing for each ROI's slice, and computes
+    the MTF curve using :func:`compute_mtf_for_roi`.  The Nyquist
+    frequency for each ROI is also computed from the in‐plane pixel
+    spacing.  A pandas DataFrame is returned with per‐ROI metrics.
+
+    Parameters
+    ----------
+    rois : list of ROI
+        The ROIs to process.
+    slices_lookup : dict
+        Mapping from slice index to pixel spacing (row_spacing, col_spacing).
+    use_cuda : bool
+        Whether to attempt CUDA for FFTs (falls back to CPU if unavailable).
+    global_f_max : float
+        Global maximum frequency used for AUC computation.
+    row_fraction : float, optional
+        Fraction of the ROI height to use when computing the ESF.  This
+        value is passed through to :func:`compute_mtf_for_roi`.
+
     Returns
     -------
     curves : list of (freq, mtf) tuples
+        The MTF curves for each ROI.
     nyquists : list of float
+        Nyquist frequencies for each ROI.
     metrics_df : pandas.DataFrame
+        A table of ROI metrics including MTF50, MTF10 and AUC.
     """
     curves: List[Tuple[np.ndarray, np.ndarray]] = []
     nyquist_list: List[float] = []
@@ -93,6 +136,7 @@ def compute_metrics_for_rois(
                 oversample_factor=4,
                 zero_pad_factor=4,
                 use_cuda=use_cuda,
+                row_fraction=row_fraction,
             )
         except Exception as e:
             logging.warning(f"Failed to compute MTF for ROI idx={idx} slice={roi.slice_index}: {e}")
@@ -139,7 +183,7 @@ def _export_roi_esf_lsf_mtf(
 
     img = np.asarray(roi.roi_image, dtype=float)
 
-    # --- ROI image with normal arrow ---
+    # --- ROI image with normal indicator ---
     roi_dir = out_dir / "examples" / series_name
     roi_dir.mkdir(parents=True, exist_ok=True)
     roi_png = roi_dir / f"roi_{idx_in_series:03d}.png"
@@ -151,9 +195,15 @@ def _export_roi_esf_lsf_mtf(
     cx, cy = (w - 1) / 2.0, (h - 1) / 2.0
     theta = np.deg2rad(roi.orientation_deg + 90.0)  # edge normal
     dx, dy = np.cos(theta), np.sin(theta)
-    scale = min(h, w) * 0.35
-    ax.arrow(cx - dx * scale * 0.5, cy - dy * scale * 0.5, dx * scale, dy * scale,
-             head_width=4, head_length=6, fc="lime", ec="lime", linewidth=1.2)
+    # Draw a solid line along the normal direction through the ROI centre.  The line
+    # spans the full width of the ROI to clearly indicate the sampling direction.
+    # A slightly shorter length is used to avoid drawing outside the axes.
+    half_len = (w - 1) / 2.0
+    x_start = cx - dx * half_len
+    y_start = cy - dy * half_len
+    x_end = cx + dx * half_len
+    y_end = cy + dy * half_len
+    ax.plot([x_start, x_end], [y_start, y_end], color="orange", linewidth=1.5)
     fig.tight_layout(pad=0)
     fig.savefig(roi_png, dpi=200)
     plt.close(fig)
@@ -313,9 +363,13 @@ def main() -> None:
     logging.info(f"[Check] median PixelSpacing col (mm): LR={lr_med:.6f}, SR={sr_med:.6f}, HR={hr_med:.6f}")
 
     # ROI selection
+    # Instantiate ROISelector using user‑specified dimensions.  A more
+    # square ROI (width≈height) mitigates the issue of edges that do
+    # not traverse the full height of very tall patches and therefore
+    # improves the stability of the ESF.
     selector = ROISelector(
-        roi_width=30,
-        roi_height=100,
+        roi_width=int(getattr(args, "roi_width", 40)),
+        roi_height=int(getattr(args, "roi_height", 40)),
         angle_min=5.0,
         angle_max=15.0,
         delta_hu_threshold=200.0,
@@ -370,6 +424,7 @@ def main() -> None:
             slices_lookup_map[name],
             use_cuda=bool(args.use_cuda),
             global_f_max=global_f_max,
+            row_fraction=float(getattr(args, "esf_frac", 0.5)),
         )
         series_curves[name] = curves
         series_nyquists[name] = nyquists

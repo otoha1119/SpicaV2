@@ -55,12 +55,36 @@ class ROISelector:
 
     def __init__(
         self,
-        roi_width: int = 30,
-        roi_height: int = 100,
+        roi_width: int = 40,
+        roi_height: int = 40,
         angle_min: float = 5.0,
         angle_max: float = 15.0,
         delta_hu_threshold: float = 200.0,
     ):
+        """
+        Parameters
+        ----------
+        roi_width : int, optional
+            Horizontal size of the rotated ROI in pixels.  A more square
+            footprint tends to produce a cleaner edge spread function when
+            averaging across the long dimension.  The default of 40 was
+            chosen to avoid extremely elongated ROIs that span many rows.
+        roi_height : int, optional
+            Vertical size of the rotated ROI in pixels.  Historically this
+            was set quite large (e.g. 100 pixels) which caused the edge to
+            only intersect a small portion of the ROI.  A moderate value
+            (default 40) keeps the edge within the field of view and
+            avoids averaging over unrelated image regions.
+        angle_min, angle_max : float, optional
+            Minimum and maximum deviation from the principal axes (in
+            degrees) used to accept candidate edges.  Only edges whose
+            orientation differs from being purely horizontal or purely
+            vertical by between these bounds are considered.
+        delta_hu_threshold : float, optional
+            Minimum absolute intensity difference across the edge (in HU)
+            required for a candidate to be accepted.  Low contrast edges
+            are rejected.
+        """
         self.roi_width = roi_width
         self.roi_height = roi_height
         self.angle_min = angle_min

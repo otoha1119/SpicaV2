@@ -17,7 +17,13 @@ import logging
 from typing import Optional, Tuple
 
 import numpy as np
-from skimage.filters import gaussian  # type: ignore
+# skimage may not be installed in all environments.  Attempt to import
+# gaussian; if unavailable, fallback smoothing is implemented in
+# `compute_mtf_for_roi`.
+try:
+    from skimage.filters import gaussian  # type: ignore
+except Exception:
+    gaussian = None  # type: ignore
 
 from .utils import next_power_of_two
 
@@ -50,6 +56,7 @@ def compute_mtf_for_roi(
     oversample_factor: int = 4,
     zero_pad_factor: int = 4,
     use_cuda: bool = False,
+    row_fraction: float = 0.5,
 ) -> Tuple[np.ndarray, np.ndarray, float, float]:
     """
     Compute the MTF curve for a single ROI.
@@ -74,6 +81,14 @@ def compute_mtf_for_roi(
         If True and a CUDA‑enabled PyTorch installation is available, the
         FFT will be computed on the GPU.  Otherwise NumPy is used.
 
+    row_fraction : float, optional
+        Fraction of the ROI height to use when forming the edge spread
+        function.  Only the central portion of the ROI (e.g. 0.5 for
+        50%) is averaged across to compute the ESF.  Values outside
+        (0,1] cause the full height to be used.  Using a smaller
+        fraction helps mitigate the effect of edges that do not span
+        the entire height of the ROI.
+
     Returns
     -------
     freq : np.ndarray
@@ -87,15 +102,42 @@ def compute_mtf_for_roi(
     """
     if roi.ndim != 2:
         raise ValueError("ROI must be 2D")
-    # Compute ESF: mean across the long dimension (rows), producing 1D array across the normal direction
-    esf = np.mean(roi, axis=0).astype(np.float64)
+    # Compute ESF by averaging across a central fraction of the ROI height.
+    # The slanted-edge method assumes the edge traverses the ROI from top to bottom.
+    # In practice, when the ROI is very tall the edge may only cross a portion of it.
+    # To avoid contaminating the ESF with unrelated pixel values, only the central
+    # fraction of rows (specified by `row_fraction`) are averaged.  A value of 0.5
+    # corresponds to averaging the middle 50% of rows.  Values outside (0,1] fall
+    # back to using the full height.
+    h, w = roi.shape
+    rf = float(row_fraction)
+    if 0.0 < rf < 1.0:
+        h_sub = int(max(1, round(h * rf)))
+        start_row = (h - h_sub) // 2
+        end_row = start_row + h_sub
+        sub_roi = roi[start_row:end_row, :]
+    else:
+        sub_roi = roi
+    esf = np.mean(sub_roi, axis=0).astype(np.float64)
     # Oversample the ESF by interpolation
     w = len(esf)
     x_original = np.arange(w)
     x_interp = np.linspace(0, w - 1, w * oversample_factor, endpoint=True)
     esf_oversampled = np.interp(x_interp, x_original, esf)
-    # Smooth ESF with a small Gaussian kernel to reduce noise (Savitzky–Golay like)
-    esf_smooth = gaussian(esf_oversampled, sigma=1.0, mode="nearest")
+    # Smooth ESF with a small Gaussian kernel to reduce noise.  If skimage
+    # is unavailable, fall back to a simple moving average.  The
+    # smoothing is important for visual clarity and to reduce ringing
+    # artefacts when differentiating to obtain the LSF.
+    try:
+        esf_smooth = gaussian(esf_oversampled, sigma=1.0, mode="nearest")
+    except Exception:
+        # Simple moving average fallback
+        kernel_size = 5
+        kernel = np.ones(kernel_size, dtype=float) / float(kernel_size)
+        # Pad reflect to avoid edge shrinkage
+        pad = kernel_size // 2
+        padded = np.pad(esf_oversampled, pad_width=pad, mode="reflect")
+        esf_smooth = np.convolve(padded, kernel, mode="valid")
     # Compute LSF (first derivative)
     lsf = np.diff(esf_smooth)
     # Apply Hann window to reduce spectral leakage
