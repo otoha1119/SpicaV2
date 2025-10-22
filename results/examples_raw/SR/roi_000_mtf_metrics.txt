@@ -1,0 +1,2 @@
+MTF50 (cycles/mm): 0.047914
+MTF10 (cycles/mm): 0.102081
