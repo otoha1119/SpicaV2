@@ -10,12 +10,39 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
-# パッケージ名は環境に合わせてください（ここでは MTF.* 前提）
+# 環境に合わせて import パスは調整してください（ここでは MTF.* 前提）
 from MTF.dicom_io import load_series, adjust_pixel_spacing_for_sr, apply_spacing_override
 from MTF.roi_selector import ROISelector, ROI
-from MTF.mtf_core import compute_mtf_for_roi, compute_auc
-from MTF.plotting import plot_mean_mtf
+from MTF.mtf_core import compute_mtf_for_roi, compute_esf_lsf_mtf, compute_auc
+from MTF.plotting import plot_mean_mtf, plot_roi_signals
 from MTF.utils import ensure_dir, seed_everything, setup_logging
+
+
+# --- compatibility helper for apply_spacing_override signatures ---
+def _apply_spacing_override_compat(slices, row: float, col: float):
+    """
+    Try multiple call signatures to support different implementations of
+    apply_spacing_override in dicom_io.py.
+    Tries (in order):
+      - apply_spacing_override(slices, row=row, col=col)
+      - apply_spacing_override(slices, row, col)
+      - apply_spacing_override(slices, (row, col))
+      - apply_spacing_override(slices, spacing=(row, col))
+    """
+    from MTF.dicom_io import apply_spacing_override as _aso
+    last_err = None
+    for call in (
+        lambda: _aso(slices, row=row, col=col),
+        lambda: _aso(slices, row, col),
+        lambda: _aso(slices, (row, col)),
+        lambda: _aso(slices, spacing=(row, col)),
+    ):
+        try:
+            return call()
+        except TypeError as e:
+            last_err = e
+            continue
+    raise last_err
 
 
 # ============================== CLI ============================== #
@@ -48,7 +75,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--lr_spacing", type=float, nargs=2, metavar=("ROW", "COL"))
     p.add_argument("--hr_spacing", type=float, nargs=2, metavar=("ROW", "COL"))
 
-    # 例の画像出力（回転前の見え方）
+    # 例の画像出力（回転前の見え方 & ESF/LSF/MTF）
     p.add_argument("--export_examples", type=int, choices=[0, 1], default=0)
     p.add_argument("--examples_per_series", type=int, default=1)
 
@@ -66,7 +93,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--gpu_ids", type=str, default="0")
     p.add_argument("--seed", type=int, default=42)
 
-    # ESF縮約（mtf_coreが対応している場合のみ自動で渡す）
+    # ESF縮約（mtf_core側で未対応なら無視されます：後方互換）
     p.add_argument("--esf_frac", type=float, default=1.0)
     p.add_argument("--esf_reduce", type=str, default="mean")
     p.add_argument("--trim_alpha", type=float, default=0.1)
@@ -101,6 +128,7 @@ def compute_metrics_for_rois(
     except Exception:
         supported = {"roi", "pixel_spacing", "oversample_factor", "zero_pad_factor", "use_cuda"}
 
+    # mtf_overlaid と同等の既定
     base_kwargs = {
         "oversample_factor": 4,
         "zero_pad_factor": 4,
@@ -112,20 +140,17 @@ def compute_metrics_for_rois(
     safe_kwargs = {k: v for k, v in base_kwargs.items() if k in supported}
 
     def _interp_threshold(freq: np.ndarray, mtf: np.ndarray, thr: float) -> float:
-        try:
-            f = np.asarray(freq, float)
-            m = np.asarray(mtf, float)
-            for i in range(1, len(m)):
-                if (m[i-1] >= thr and m[i] <= thr) or (m[i-1] <= thr and m[i] >= thr):
-                    f0, f1 = f[i-1], f[i]
-                    m0, m1 = m[i-1], m[i]
-                    if abs(m1 - m0) < 1e-12:
-                        return float(f0)
-                    t = (thr - m0) / (m1 - m0)
-                    return float(f0 + t * (f1 - f0))
-            return float("nan")
-        except Exception:
-            return float("nan")
+        f = np.asarray(freq, float)
+        m = np.asarray(mtf, float)
+        for i in range(1, len(m)):
+            if (m[i-1] >= thr and m[i] <= thr) or (m[i-1] <= thr and m[i] >= thr):
+                f0, f1 = f[i-1], f[i]
+                m0, m1 = m[i-1], m[i]
+                if abs(m1 - m0) < 1e-12:
+                    return float(f0)
+                t = (thr - m0) / (m1 - m0)
+                return float(f0 + t * (f1 - f0))
+        return float("nan")
 
     def _unpack_result(res):
         if isinstance(res, (list, tuple)):
@@ -201,9 +226,9 @@ def _export_example_raw_patch(
     h, w = img.shape
     W, H = int(roi_size[0]), int(roi_size[1])   # W: 法線側の短辺 / H: エッジ側の長辺
     c, r = float(roi.center_col), float(roi.center_row)
-    ang = float(roi.edge_angle_deg)             # 想定：法線角（0°=水平, 90°=垂直）
+    ang = float(getattr(roi, "edge_angle_deg", 0.0))  # 法線角想定（なければ0）
 
-    # 角度が接線角で渡ってきた場合に +90° して法線角へ補正（ロバスト表示用）
+    # Sobel で法線角を推定しつつ 90°ずれを補正（ロバスト表示）
     try:
         win = 15
         x0 = max(0, int(c) - win); x1 = min(w - 1, int(c) + win)
@@ -220,14 +245,14 @@ def _export_example_raw_patch(
     except Exception:
         pass
 
-    # 基底ベクトル：法線 n（オレンジ線と同向）／接線 t（エッジ方向）
+    # 基底ベクトル：法線 n ／接線 t（エッジ方向）
     ang_rad = np.deg2rad(ang)
-    n = np.array([np.cos(ang_rad), np.sin(ang_rad)], dtype=np.float32)    # normal
-    t = np.array([-np.sin(ang_rad), np.cos(ang_rad)], dtype=np.float32)   # tangent (edge dir)
+    n = np.array([np.cos(ang_rad), np.sin(ang_rad)], dtype=np.float32)
+    t = np.array([-np.sin(ang_rad), np.cos(ang_rad)], dtype=np.float32)
 
-    # ★長方形の長辺（H）を接線 t に、短辺（W）を法線 n に
-    dx = W / 2.0  # 法線方向の半幅（短辺）
-    dy = H / 2.0  # 接線方向の半長（長辺）
+    # 長方形（長辺=H を接線、短辺=W を法線）
+    dx = W / 2.0  # 法線方向の半幅
+    dy = H / 2.0  # 接線方向の半長
     center = np.array([c, r], dtype=np.float32)
     corners = np.stack([
         center + (-dx)*n + (-dy)*t,
@@ -252,7 +277,7 @@ def _export_example_raw_patch(
 
     # オレンジ線（法線）
     nx, ny = np.cos(ang_rad), np.sin(ang_rad)
-    cx, cy = c - x_min, r - y_min
+    cx, cy = (c - x_min), (r - y_min)
     L = max(W, H) * 1.2
     p1 = (cx - nx * L, cy - ny * L)
     p2 = (cx + nx * L, cy + ny * L)
@@ -270,7 +295,7 @@ def _export_example_raw_patch(
     plt.close(fig)
 
 
-# ====================== Overlaid 図の保存 ====================== #
+# ====================== Overlaid 図の保存（必要に応じて使用） ====================== #
 def _save_overlaid_mtf(
     series_curves: Dict[str, List[Tuple[np.ndarray, np.ndarray]]],
     series_nyquists: Dict[str, List[float]],
@@ -278,10 +303,6 @@ def _save_overlaid_mtf(
     draw_nyquist: bool,
     normalize_x: bool,
 ) -> None:
-    """
-    各シリーズの各ROIの MTF をすべて重ね描きして保存する。
-    normalize_x=True のときは各ROI毎に Nyquist=1 へ正規化。
-    """
     if not any(len(v) for v in series_curves.values()):
         logging.warning("No MTF curves to plot for overlaid figure.")
         return
@@ -355,12 +376,17 @@ def main() -> None:
         if not series_slices[series_name]:
             logging.warning(f"No DICOM slices found in {d}")
 
-    # spacing 補正/上書き
+    # spacing 補正/上書き（nargs=2 で受け取り、row/col に明示で流す）
     if args.lr_spacing:
-        apply_spacing_override(series_slices.get("LR", []), args.lr_spacing)
-        apply_spacing_override(series_slices.get("SR", []), args.lr_spacing)
+        lr_row, lr_col = float(args.lr_spacing[0]), float(args.lr_spacing[1])
+        _apply_spacing_override_compat(series_slices.get("LR", []), lr_row, lr_col)
+        # SR側も LR と同じピッチで評価したい場合（従来互換）
+        _apply_spacing_override_compat(series_slices.get("SR", []), lr_row, lr_col)
+
     if args.hr_spacing:
-        apply_spacing_override(series_slices.get("HR", []), args.hr_spacing)
+        hr_row, hr_col = float(args.hr_spacing[0]), float(args.hr_spacing[1])
+        _apply_spacing_override_compat(series_slices.get("HR", []), hr_row, hr_col)
+
     if args.sr_scale and args.sr_scale > 0:
         adjust_pixel_spacing_for_sr(series_slices.get("SR", []), args.sr_scale)
 
@@ -369,7 +395,8 @@ def main() -> None:
     for series_name, slices in series_slices.items():
         lookup = {}
         for s in slices:
-            lookup[s.index] = s.pixel_spacing
+            # s.pixel_spacing: (row_mm, col_mm)
+            lookup[s.index] = (float(s.pixel_spacing[0]), float(s.pixel_spacing[1]))
         slices_lookup_map[series_name] = lookup
 
     # ROI 選択器（互換性重視：必須だけ __init__ に渡し、追加は hasattr で注入）
@@ -401,15 +428,15 @@ def main() -> None:
         series_rois[name] = rois
         logging.info(f"Selected {len(rois)} ROIs for {name}")
 
-    # 例の出力（回転前の見え方＋法線線）
+    # 例の出力（回転前の見え方＋法線線 & ESF/LSF/MTF）
     if args.export_examples == 1:
         ex_n = int(args.examples_per_series)
         for series_name, rois in series_rois.items():
             if not rois:
                 continue
-            # 回転前スライスアクセス用
             slice_by_index = {s.index: s for s in series_slices.get(series_name, [])}
             for j, roi in enumerate(rois[:ex_n]):
+                # 1) 回転前スライス上の可視化
                 raw_slice = slice_by_index[roi.slice_index].pixel_array
                 _export_example_raw_patch(
                     raw_img=np.asarray(raw_slice, dtype=float),
@@ -419,19 +446,37 @@ def main() -> None:
                     series_name=series_name,
                     idx_in_series=j,
                 )
+
+                # 2) ESF/LSF/MTF（mtf_overlaid と同一パイプライン）
+                row_spacing, col_spacing = slices_lookup_map[series_name][roi.slice_index]
+                esf, lsf, freq, mtf, mtf50, mtf10 = compute_esf_lsf_mtf(
+                    roi=roi.roi_image,
+                    pixel_spacing=(row_spacing, col_spacing),
+                    oversample_factor=4,
+                    zero_pad_factor=4,
+                    use_cuda=bool(args.use_cuda),
+                )
+                # 例の保存先
+                series_ex_dir = out_dir / "examples_raw" / series_name
+                series_ex_dir.mkdir(parents=True, exist_ok=True)
+                out_prefix = str(series_ex_dir / f"roi_{j:03d}")
+                plot_roi_signals(esf, lsf, freq, mtf, out_prefix)
+                with open(f"{out_prefix}_mtf_metrics.txt", "w") as f:
+                    f.write(f"MTF50 (cycles/mm): {mtf50:.6f}\n")
+                    f.write(f"MTF10 (cycles/mm): {mtf10:.6f}\n")
         logging.info(f"Saved examples under {out_dir / 'examples_raw'}")
 
     # AUC用の上限周波数（全シリーズのNyquistの最小×0.95）
     all_nyquists: List[float] = []
     for slices in series_slices.values():
         for s in slices:
-            col_spacing = s.pixel_spacing[1]
+            col_spacing = float(s.pixel_spacing[1])
             if col_spacing > 0:
                 all_nyquists.append(0.5 / col_spacing)
     global_f_max = (min(all_nyquists) * 0.95) if all_nyquists else 0.0
     logging.info(f"Global f_max for AUC: {global_f_max:.3f} cycles/mm")
 
-    # ROIごとの MTF 計算
+    # ROIごとの MTF 計算（mtf_overlaid.png 用）
     series_curves: Dict[str, List[Tuple[np.ndarray, np.ndarray]]] = {}
     series_nyquists: Dict[str, List[float]] = {}
     metrics_frames: List[pd.DataFrame] = []
@@ -450,16 +495,17 @@ def main() -> None:
         series_curves[name] = curves
         series_nyquists[name] = nyquists
         metrics_frames.append(df_metrics)
-        df_metrics.to_csv(out_dir / f"{name.lower()}_roi_metrics.csv", index=False)
+        if not df_metrics.empty:
+            df_metrics.to_csv(out_dir / f"{name.lower()}_roi_metrics.csv", index=False)
 
-    # ------------------ 図の保存 ------------------
+    # ------------------ 平均 MTF 図の保存 ------------------
     plot_path = out_dir / "mtf_overlaid.png"
     plot_mean_mtf(
-        series_curves,          # 各シリーズの ROI→(freq, mtf) 一覧
+        series_curves,          # 各シリーズの ROI→(freq, mtf)
         series_nyquists,        # 各ROIのNyquist（正規化用）
         str(plot_path),
         draw_nyquist=bool(args.draw_nyquist),
-        normalize_x=bool(args.x_norm),   # ← run_mtf.sh の --x_norm に追従（既定は正規化ON）
+        normalize_x=bool(args.x_norm),
     )
     logging.info(f"Saved mean MTF figure (normalized={bool(args.x_norm)}) to: {plot_path}")
 
