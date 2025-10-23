@@ -23,11 +23,11 @@ python train.py --dataroot /workspace/DataSet/ImageCAS \
                 --model medical_cycle_gan \
                 --direction AtoB \
                 --dataset_mode dicom_ctpcct_2x \
-                --batch_size 1 \
+                --batch_size 2\
                 --epoch 200 \
                 --niter 100 \
                 --niter_decay 100 \
-                --gpu_ids -1 \
+                --gpu_ids 0 \
                 --hr_root /workspace/DataSet/photonCT/PhotonCT1024v2 \
                 --lr_root /workspace/DataSet/ImageCAS \
                 --num_threads 4 \

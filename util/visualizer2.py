@@ -1,13 +1,18 @@
 # -*- coding: utf8 -*-
-"""TensorBoard visualizer (Visualizer2)
+"""TensorBoard visualizer (Visualizer2) — minimal & focused (v2, backward‑compatible)
 
-- 1段目: real_A, fake_B, real_B, fake_A を横一列に並べた画像を出力（表示用に自動リサイズ）
-- 2段目: 損失のスカラー（log_losses から記録）
-- 3段目: それ以外の各画像名（real_A, fake_B, rec_A, ...）を個別グリッドで出力
+変更点（v2）:
+- train.py から `display_current_results(visuals, epoch, total_iters)` と
+  呼ばれても動くように、可変引数に対応しました。
+- step は「与えられた引数の最後の整数」を採用（なければ 0）。
+
+基本仕様:
+- TensorBoard に **最新バッチの SR / LR / HR の3枚だけ** を記録します。
+- それ以外の画像は書き出しません。
+- キー: LR=real_A, SR=fake_B, HR=real_B（順序は self.top_row_names で調整可）
 """
 
 import os
-from collections import OrderedDict
 from typing import Dict, Any, List
 
 import torch
@@ -17,140 +22,150 @@ from torch.utils.tensorboard import SummaryWriter
 
 
 class Visualizer2:
-    """TensorBoard Visualizer"""
+    """TensorBoard Visualizer (SR/LR/HR の3枚のみ出力)"""
 
     def __init__(self, opt):
-        """
-        Args:
-            opt: TrainOptions で parse されたオプション
-        """
         self.opt = opt
-        # TensorBoard の出力先（必要なら "runs" -> "logs_tb" に変更可）
-        self.log_dir = os.path.join(opt.checkpoints_dir, opt.name, "runs")
+        self.log_dir = os.path.join(getattr(opt, "checkpoints_dir", "./checkpoints"),
+                                    getattr(opt, "name", "default"),
+                                    "runs")
         os.makedirs(self.log_dir, exist_ok=True)
         self.writer = SummaryWriter(log_dir=self.log_dir)
 
-        # デバイス
-        self.device = torch.device("cuda:0" if torch.cuda.is_available() and (opt.gpu_ids is None or opt.gpu_ids != "-1") else "cpu")
+        # 表示順（左→右）。デフォは SR, LR, HR
+        self.top_row_names: List[str] = ["fake_B", "real_A", "real_B"]
 
-        # 1段目に並べるキーの順序
-        self.top_row_names = ["real_A", "fake_B", "real_B", "fake_A"]
+        self.grid_padding: int = 2
+        self.target_edge: int = int(getattr(opt, "display_winsize", 256) or 256)
+        self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-    # --------- 画像ユーティリティ ----------
-    @staticmethod
-    def _to_bchw(t: torch.Tensor) -> torch.Tensor:
-        """任意の Tensor を [B, C, H, W] に揃える（Cは1chを想定・多chは先頭1chを利用）"""
-        if t is None:
+    # -------------------------- helpers --------------------------
+
+    def _to_bchw(self, x: torch.Tensor) -> torch.Tensor:
+        if x is None:
             return None
-        if t.dim() == 2:
-            # [H, W] -> [1,1,H,W]
+        t = x if isinstance(x, torch.Tensor) else torch.as_tensor(x)
+        if t.dim() == 2:             # [H, W]
             t = t.unsqueeze(0).unsqueeze(0)
-        elif t.dim() == 3:
-            # [C,H,W] -> [1,C,H,W]
-            t = t.unsqueeze(0)
+        elif t.dim() == 3:           # [C, H, W] or [H, W, C]
+            if t.shape[0] in (1, 3): # [C, H, W]
+                t = t.unsqueeze(0)
+            else:                    # [H, W, C]
+                t = t.permute(2, 0, 1).unsqueeze(0)
         elif t.dim() == 4:
-            # そのまま
             pass
         else:
-            raise ValueError(f"Unsupported tensor shape for image: {t.shape}")
-
-        if t.shape[1] > 1:
-            t = t[:, :1, :, :]
+            raise ValueError(f"Unsupported tensor shape: {t.shape}")
         return t
 
-    def _resize_to(self, t: torch.Tensor, size_hw: tuple) -> torch.Tensor:
-        """表示用にバイリニアでサイズを合わせる（[B,1,H,W]想定）"""
-        th, tw = size_hw
-        if (t.shape[-2], t.shape[-1]) == (th, tw):
-            return t
-        return F.interpolate(t, size=(th, tw), mode="bilinear", align_corners=False)
+    def _normalize01(self, t: torch.Tensor) -> torch.Tensor:
+        if t.min() < -0.5 and t.max() <= 1.5:
+            t = (t + 1.0) * 0.5
+        tmin = float(t.min())
+        tmax = float(t.max())
+        if tmin == tmax:
+            return torch.zeros_like(t)
+        t = (t - tmin) / (tmax - tmin)
+        return t.clamp(0, 1)
 
-    # --------- 公開API ----------
-    def display_current_results(self, visuals: Dict[str, Any], epoch: int, step: int):
+    def _take_latest(self, t: torch.Tensor) -> torch.Tensor:
+        if t is None:
+            return None
+        if t.dim() == 4 and t.shape[0] > 1:
+            return t[-1:].contiguous()
+        return t
+
+    def _resize_to_edge(self, t: torch.Tensor, target_edge: int) -> torch.Tensor:
+        if t is None:
+            return None
+        _, _, h, w = t.shape
+        if h == 0 or w == 0:
+            return t
+        long_edge = max(h, w)
+        if long_edge == target_edge:
+            return t
+        scale = target_edge / float(long_edge)
+        new_h = max(1, int(round(h * scale)))
+        new_w = max(1, int(round(w * scale)))
+        return F.interpolate(t, size=(new_h, new_w), mode="nearest")
+
+    def _pad_to_same_hw(self, tensors: List[torch.Tensor]) -> List[torch.Tensor]:
+        if not tensors:
+            return tensors
+        max_h = max(t.shape[2] for t in tensors if t is not None)
+        max_w = max(t.shape[3] for t in tensors if t is not None)
+        padded = []
+        for t in tensors:
+            if t is None:
+                continue
+            _, _, h, w = t.shape
+            pad_h = max_h - h
+            pad_w = max_w - w
+            t = F.pad(t, (0, pad_w, 0, pad_h))
+            padded.append(t)
+        return padded
+
+    # --------------------------- public ---------------------------
+
+    @torch.no_grad()
+    def display_current_results(self, visuals: Dict[str, Any], *args, **kwargs):
+        """最新バッチの SR/LR/HR の3枚だけを TensorBoard に出力
+
+        互換仕様:
+        - display_current_results(visuals, step)
+        - display_current_results(visuals, epoch, total_iters)
+        - display_current_results(visuals, ..., step=<int>)
+        など、最後に渡された整数を global_step として使います。
         """
-        visuals: model.get_current_visuals() が返す dict（Tensor）
-        epoch: 現在のエポック
-        step: グローバルステップ（イテレーション）
-        """
-        if visuals is None or not isinstance(visuals, (dict, OrderedDict)) or len(visuals) == 0:
+        # global_step を決定
+        step = kwargs.get("step", None)
+        if step is None:
+            # 可変長引数の最後の int を採用
+            for x in reversed(args):
+                if isinstance(x, int):
+                    step = x
+                    break
+        if step is None:
+            step = 0  # フォールバック
+
+        if not isinstance(visuals, dict):
             return
 
-        # ----- 1) トップ行（real_A, fake_B, real_B, fake_A を横一列）-----
         row_imgs: List[torch.Tensor] = []
-        target_h, target_w = None, None
-
-        # まずは real_B のサイズがあればそれに揃える
-        rb = visuals.get("real_B", None)
-        if isinstance(rb, torch.Tensor):
-            rb = self._to_bchw(rb)
-            target_h, target_w = int(rb.shape[-2]), int(rb.shape[-1])
-
-        # 無ければ、候補の中で最大サイズに揃える
-        if target_h is None:
-            sizes = []
-            for name in self.top_row_names:
-                t = visuals.get(name, None)
-                if isinstance(t, torch.Tensor):
-                    t = self._to_bchw(t)
-                    sizes.append((int(t.shape[-2]), int(t.shape[-1])))
-            if sizes:
-                target_h, target_w = max(sizes, key=lambda x: x[0] * x[1])
-            else:
-                target_h, target_w = 128, 128  # フォールバック
-
         for name in self.top_row_names:
-            t = visuals.get(name, None)
-            if isinstance(t, torch.Tensor):
-                t = self._to_bchw(t)
-                t = self._resize_to(t, (target_h, target_w))
-            else:
-                t = torch.zeros(1, 1, target_h, target_w, device=self.device)
-            row_imgs.append(t)
-
-        row_batch = torch.cat(row_imgs, dim=0)  # [N,1,H,W]
-        # 値域統一: [-1,1] なら [0,1] へ
-        row_disp = row_batch.to(torch.float32)
-        if row_disp.min().item() < 0.0:
-            row_disp = (row_disp + 1.0) / 2.0
-        row_disp = row_disp.clamp(0.0, 1.0)
-
-        # 個別正規化は使わない（コントラストがバラけるのを防ぐ）
-        grid_top = vutils.make_grid(
-            row_disp,
-            nrow=len(self.top_row_names),
-            normalize=True
-        )
-        self.writer.add_image("00_TopRow/realA_fakeB_realB_fakeA", grid_top, global_step=step)
-
-        # ----- 2) それ以外の各画像を個別にグリッド化して出力 -----
-        skip_set = set(self.top_row_names)
-        for name, tensor in visuals.items():
-            if name in skip_set:
+            img = visuals.get(name, None)
+            if not isinstance(img, torch.Tensor):
+                row_imgs.append(torch.zeros(1, 1, self.target_edge, self.target_edge))
                 continue
-            if not isinstance(tensor, torch.Tensor):
-                continue
-            t = self._to_bchw(tensor).to(torch.float32)
-            if t.min().item() < 0.0:
-                t = (t + 1.0) / 2.0
-            t = t.clamp(0.0, 1.0)
+            t = self._to_bchw(img)
+            t = self._take_latest(t)
+            t = self._normalize01(t)
+            t = self._resize_to_edge(t, self.target_edge)
+            row_imgs.append(t.cpu())
 
-            grid = vutils.make_grid(
-                t,
-                nrow=min(t.shape[0], 8),
-                normalize=False
-            )
-            self.writer.add_image(f"10_AllImages/{name}", grid, global_step=step)
+        row_imgs = self._pad_to_same_hw(row_imgs)
 
-    
-    def log_losses(self, losses: Dict[str, float], step: int):
-        """損失を TensorBoard に記録"""
-        if not isinstance(losses, (dict, OrderedDict)):
+        if len(row_imgs) > 0:
+            grid = vutils.make_grid(torch.cat(row_imgs, dim=0), nrow=len(row_imgs),
+                                    padding=self.grid_padding, normalize=False)
+            self.writer.add_image("00_TopRow/SR_LR_HR", grid, global_step=step)
+
+    def log_losses(self, losses: Dict[str, float], *args, **kwargs):
+        """損失を TensorBoard に記録（引数互換: 最後の int を step として使用）"""
+        step = kwargs.get("step", None)
+        if step is None:
+            for x in reversed(args):
+                if isinstance(x, int):
+                    step = x
+                    break
+        if step is None:
+            step = 0
+        if not isinstance(losses, dict):
             return
         for k, v in losses.items():
             try:
                 self.writer.add_scalar(f"Loss/{k}", float(v), global_step=step)
             except Exception:
-                # 変換できない場合はスキップ
                 continue
 
     def close(self):
