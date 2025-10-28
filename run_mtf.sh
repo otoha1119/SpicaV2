@@ -28,7 +28,7 @@ HR_SPACING_COL="0.136719"
 SEED=42
 
 # ---- サンプル可視化（viz_sample） ----
-VIZ_SAMPLE=1      # 1=サンプル可視化モード / 0=通常モード
+VIZ_SAMPLE=0     # 1=サンプル可視化モード / 0=通常モード
 SERIES_ID="sample"    # 出力サブディレクトリ名 (outputs/sample_viz/<SERIES_ID>/...)
 SAMPLE_INDEX=0        # 可視化するROIインデックス（0起点）
 ### ================================================================ ###
