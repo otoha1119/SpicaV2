@@ -48,9 +48,6 @@ class ROI:
     orientation_deg: float  # original edge orientation in degrees (0=horiz)
     delta_hu: float  # contrast difference across edge (absolute)
     group: int  # stratification group index
-    center_row: int        # 回転“前”の中心(y)
-    center_col: int        # 回転“前”の中心(x)
-    edge_angle_deg: float  # 回転“前”に測ったエッジ角（0°=水平,90°=垂直）
 
 
 class ROISelector:
@@ -258,9 +255,6 @@ class ROISelector:
                         orientation_deg=angle,
                         delta_hu=delta_hu,
                         group=group,
-                        center_row=int(r),
-                        center_col=int(c),
-                        edge_angle_deg=float(angle),
                     )
                 )
                 if len(candidates) >= max_candidates:
