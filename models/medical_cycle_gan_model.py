@@ -75,7 +75,7 @@ class MedicalCycleGANModel(BaseModel):
                                 help='weight for cycle loss (A -> B -> A)')
             parser.add_argument('--lambda_B', type=float, default=1.0,
                                 help='weight for cycle loss (B -> A -> B)')
-            parser.add_argument('--lambda_identity', type=float, default=0,
+            parser.add_argument('--lambda_identity', type=float, default=0.5,
                                 help=('use identity mapping. Setting lambda_identity other than 0 has an effect '
                                       'of scaling the weight of the identity mapping loss.')) #default0.2
             # Downsample and upsample losses disabled by default
@@ -243,26 +243,31 @@ class MedicalCycleGANModel(BaseModel):
         lambda_A = self.opt.lambda_A
         lambda_B = self.opt.lambda_B
         # Identity loss
+        
         if lambda_idt > 0:
-            self.loss_idt_A = 0
-            self.loss_idt_B = 0
-            # # G_A should be identity if real_B is fed: ||G_A(B) - B||
-            # self.idt_A = self.netG_A(self.real_B)
+            # G_A should be identity if real_B is fed: ||G_A(B) - B||
+            self.idt_A = self.netG_A(F.interpolate(self.real_B, size=self.real_A.shape[-2:], mode='bilinear', align_corners=False))
+            
+            print(f"[DBG] idt_A {tuple(self.idt_A.shape)}")
+            print(f"[DBG] real_B {tuple(self.real_B.shape)}")
             # m = AvgPool2d(scale, stride=scale)
             # self.idt_A = m(self.idt_A)
-            # # Align idt_A spatial size with real_B
+            # Align idt_A spatial size with real_B
             # if self.idt_A.shape[-2:] != self.real_B.shape[-2:]:
             #     self.idt_A = F.interpolate(self.idt_A, size=self.real_B.shape[-2:], mode='bilinear', align_corners=False)
-            # self.loss_idt_A = self.criterionIdt(self.idt_A, self.real_B) * lambda_B * lambda_idt
-            # # G_B should be identity if real_A is fed: ||G_B(A) - A||
-            # self.idt_B = self.netG_B(self.real_A)
+            self.loss_idt_A = self.criterionIdt(self.idt_A, self.real_B) * lambda_B * lambda_idt
+            
+            # G_B should be identity if real_A is fed: ||G_B(A) - A||
+            self.idt_B = self.netG_B(F.interpolate(self.real_A, size=self.real_B.shape[-2:], mode='bilinear', align_corners=False))
+            print(f"[DBG] idt_B {tuple(self.idt_B.shape)}")
+            print(f"[DBG] real_A {tuple(self.real_A.shape)}")
             # n = UpsamplingBilinear2d(scale_factor=scale)
             # self.idt_B = n(self.idt_B)
             # # Align idt_B spatial size with real_A
             # if self.idt_B.shape[-2:] != self.real_A.shape[-2:]:
             #     self.idt_B = F.interpolate(self.idt_B, size=self.real_A.shape[-2:], mode='bilinear', align_corners=False)
-            # # Multiply by 0.1 to balance identity terms as in original implementation
-            # self.loss_idt_B = self.criterionIdt(self.idt_B, self.real_A) * lambda_A * lambda_idt * 0.1
+            # Multiply by 0.1 to balance identity terms as in original implementation
+            self.loss_idt_B = self.criterionIdt(self.idt_B, self.real_A) * lambda_A * lambda_idt
         else:
             self.loss_idt_A = 0
             self.loss_idt_B = 0

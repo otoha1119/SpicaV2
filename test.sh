@@ -14,7 +14,7 @@ python inference_single.py \
   --input_nc 1 --output_nc 1 \
   --name SR_CycleGAN \
   --checkpoints_dir /workspace/checkpoints_mac \
-  --epoch 167 \
+  --epoch 200 \
   --use_G A \
   --input_dicom /workspace/IM_091.dcm \
   --output_dicom /workspace/results/SR_2x.dcm \
