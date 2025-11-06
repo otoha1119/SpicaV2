@@ -4,6 +4,8 @@
 import os
 import shutil
 import time
+
+import torch
 from tqdm import tqdm
 
 from options.train_options import TrainOptions
@@ -45,6 +47,18 @@ def maybe_reset_logs(opt):
 if __name__ == '__main__':
     # 1) オプション & データセット
     opt = TrainOptions().parse() #オプションを取得
+    ngpu = torch.cuda.device_count()
+
+    if ngpu > 1:
+        opt.gpu_ids = list(range(ngpu))  # [0, 1]
+        opt.batch_size = 12              # 合計バッチサイズを12に固定（6×2）
+    elif ngpu == 1:
+        opt.gpu_ids = [0]
+        opt.batch_size = 12              # 単一GPU（24GB）でも12でOK
+    else:
+        opt.gpu_ids = []
+        opt.batch_size = 4               # CPU fallback（任意）
+
 
     print(f"[INFO] scale={opt.scale}, sampling_times={opt.sampling_times}, "
       f"lr_patch={opt.lr_patch}, hr_patch={opt.hr_patch}")

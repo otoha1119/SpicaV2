@@ -11,6 +11,9 @@ services:
     env_file:
       - .env
 
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=${GPU_DEVICES:-all}
+
     ports:
       - '50002:8888'
       - '8097:8097'
@@ -23,11 +26,3 @@ services:
     working_dir: /workspace
     command: >
       jupyter notebook --allow-root --ip=0.0.0.0 --port=8888 --no-browser
-
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all         
-              capabilities: [gpu]
