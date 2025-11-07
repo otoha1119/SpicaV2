@@ -248,8 +248,8 @@ class MedicalCycleGANModel(BaseModel):
             # G_A should be identity if real_B is fed: ||G_A(B) - B||
             self.idt_A = self.netG_A(F.interpolate(self.real_B, size=self.real_A.shape[-2:], mode='bilinear', align_corners=False))
             
-            print(f"[DBG] idt_A {tuple(self.idt_A.shape)}")
-            print(f"[DBG] real_B {tuple(self.real_B.shape)}")
+            # print(f"[DBG] idt_A {tuple(self.idt_A.shape)}")
+            # print(f"[DBG] real_B {tuple(self.real_B.shape)}")
             # m = AvgPool2d(scale, stride=scale)
             # self.idt_A = m(self.idt_A)
             # Align idt_A spatial size with real_B
@@ -259,8 +259,8 @@ class MedicalCycleGANModel(BaseModel):
             
             # G_B should be identity if real_A is fed: ||G_B(A) - A||
             self.idt_B = self.netG_B(F.interpolate(self.real_A, size=self.real_B.shape[-2:], mode='bilinear', align_corners=False))
-            print(f"[DBG] idt_B {tuple(self.idt_B.shape)}")
-            print(f"[DBG] real_A {tuple(self.real_A.shape)}")
+            # print(f"[DBG] idt_B {tuple(self.idt_B.shape)}")
+            # print(f"[DBG] real_A {tuple(self.real_A.shape)}")
             # n = UpsamplingBilinear2d(scale_factor=scale)
             # self.idt_B = n(self.idt_B)
             # # Align idt_B spatial size with real_A

@@ -27,7 +27,7 @@ python train.py --dataroot /workspace/DataSet/ImageCAS \
                 --epoch 200 \
                 --niter 100 \
                 --niter_decay 100 \
-                --gpu_ids [0,1] \
+                --gpu_ids 0 \
                 --hr_root /workspace/DataSet/photonCT/PhotonCT1024v2 \
                 --lr_root /workspace/DataSet/ImageCAS \
                 --num_threads 4 \

@@ -80,6 +80,7 @@ class DicomCtpcct2xDataset(BaseDataset):
             if not os.path.isdir(pdir):
                 continue
             paths = dio.list_dicom_files_recursive(pdir)
+            paths = [p for p in paths if not os.path.basename(p).startswith("._")]
             if len(paths) == 0:
                 continue
             # ★ ここを切り替え
