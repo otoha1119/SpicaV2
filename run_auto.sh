@@ -23,7 +23,7 @@ python train.py --dataroot /workspace/DataSet/ImageCAS \
                 --model medical_cycle_gan \
                 --direction AtoB \
                 --dataset_mode dicom_ctpcct_2x \
-                --batch_size 1 \
+                --batch_size 12 \
                 --epoch 200 \
                 --niter 100 \
                 --niter_decay 100 \
