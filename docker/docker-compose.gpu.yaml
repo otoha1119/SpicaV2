@@ -11,6 +11,8 @@ services:
     env_file:
       - .env
 
+    runtime: nvidia
+
     environment:
       - NVIDIA_VISIBLE_DEVICES=${GPU_DEVICES:-all}
 

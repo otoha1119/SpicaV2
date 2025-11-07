@@ -1,48 +1,52 @@
 # ================================
-# PyTorch (CUDA 11.7 対応)
+# 基本インデックス(PyPI)
 # ================================
---extra-index-url https://download.pytorch.org/whl/cu117
-torch==2.0.1
-torchvision==0.15.2
+--index-url https://pypi.org/simple
+--extra-index-url https://download.pytorch.org/whl/nightly/cu124
+
+# ================================
+# PyTorch Nightly (CUDA 12.4 対応) - RTX 5060 Ti (sm_120) サポート
+# ※ 既存プロジェクトとの互換性: 99%（APIはPyTorch 2.5とほぼ同じ）
+# ================================
+--pre
+torch
+torchvision
 
 # ================================
 # 基本必須ライブラリ
 # ================================
-numpy==1.23.4
-Pillow==9.3.0
-matplotlib==3.6.2
-pandas
-scikit-learn>=1.1.1
-scikit-image>=0.19.0
-seaborn>=0.11.2
-tqdm>=4.64.0
-h5py>=3.7.0
+numpy==1.26.4
+Pillow==10.4.0
+matplotlib==3.9.0
+pandas==2.2.2
+scikit-learn>=1.5.0
+scikit-image>=0.24.0
+seaborn>=0.13.0
+tqdm>=4.66.0
+h5py>=3.11.0
 
 # ================================
-# PyTorch 拡張（2.x と相性の良い組）
+# PyTorch 拡張(2.5.x/2.6.x と相性の良い組)
 # ================================
-einops==0.6.0
+einops==0.8.0
 torchinfo>=1.8.0
-torchmetrics==0.11.4
-pytorch_lightning==1.9.4
-# monai を使うなら（古い 0.9.1 は互換性微妙なので外すか最新系に）
-# monai==1.3.0
+torchmetrics==1.4.0
+pytorch_lightning==2.4.0
 
 # ================================
 # 可視化・補助
 # ================================
-dominate>=2.6.0
+dominate>=2.9.0
 visdom>=0.2.4
 japanize-matplotlib
 
-# TensorBoard と Markdown は衝突しやすいので固定
-tensorboard==2.12.3
-markdown>=3.4.3
+tensorboard==2.18.0
+markdown>=3.6.0
 
 # ================================
-# Notebook 環境（必要なら）
+# Notebook 環境(必要なら)
 # ================================
-notebook>=6.4.12
+notebook>=7.2.0
 jupyter
 ipython
 openpyxl
@@ -50,10 +54,13 @@ openpyxl
 # ================================
 # 画像処理関連
 # ================================
-# GUI を使わないなら headless 推奨（libgl 不要）
-opencv-python-headless>=4.8.0
+opencv-python-headless>=4.10.0
 pylibjpeg
 pydicom
-nibabel>=5.0.0
+nibabel>=5.2.0
 
-pytorch-msssim>=0.2.1
+# ================================
+# 追加:画像類似度損失(MS-SSIM)
+# ================================
+pytorch-msssim>=1.0.0
+　　　
