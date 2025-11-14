@@ -1,0 +1,30 @@
+services:
+  spica2:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      args:
+        REQUIREMENTS_FILE: requirements-gpu.txt
+    container_name: spica2
+    shm_size: '2gb'
+
+    env_file:
+      - .env
+
+    runtime: nvidia
+
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=${GPU_DEVICES:-all}
+
+    ports:
+      - '50002:8888'
+      - '8097:8097'
+      - '6006:6006'
+
+    volumes:
+      - ../:/workspace
+      - ${DATASET_PATH}:/workspace/DataSet
+
+    working_dir: /workspace
+    command: >
+      jupyter notebook --allow-root --ip=0.0.0.0 --port=8888 --no-browser
