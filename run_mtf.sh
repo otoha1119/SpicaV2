@@ -17,7 +17,7 @@ OUT_DIR="/workspace/results"
 # ---- 通常モード用（main_mtf.py） ----
 NUM_ROIS=4000         # 1シリーズあたりのROI数
 DRAW_NYQUIST=0        # 1=Nyquist線描画, 0=非表示
-USE_CUDA=1            # 1=CUDA使用, 0=CPU
+USE_CUDA=0            # 1=CUDA使用, 0=CPU
 GPU_IDS="0"           # "0" / "0,1" / "-1"(CPU)
 SR_SCALE="2.0"        # SRのPixelSpacing補正倍率。空文字""で無効
 X_NORM=1              # 1=正規化(主観比較向け), 0=物理単位[cycles/mm]
