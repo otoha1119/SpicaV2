@@ -33,7 +33,7 @@ def find_model_using_name(model_name):
     model_filename = "models." + model_name + "_model"
     modellib = importlib.import_module(model_filename)
     model = None
-    target_model_name = model_name.replace('_', '') + 'model' #举个例子：将medical_cycle_gan转换为medicalcycleganmodel
+    target_model_name = model_name.replace('_', '') + 'model' 
     for name, cls in modellib.__dict__.items():
         if name.lower() == target_model_name.lower() \
            and issubclass(cls, BaseModel):

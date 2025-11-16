@@ -125,7 +125,7 @@ def define_Decoder(input_nc, output_nc, ngf, norm='batch', use_dropout=False, in
     net = Clinical2MicroGenerator_upsample(input_nc, output_nc, norm_layer=norm_layer, use_dropout=use_dropout, n_blocks=4, padding_type='reflect', upsampling_times=sampling_times)
     return init_net(net, init_type, init_gain, gpu_ids)
 
-def define_G(input_nc, output_nc, ngf, netG, norm='batch', use_dropout=False, init_type='normal', init_gain=0.02, gpu_ids=[], sampling_times=3):
+def define_G(input_nc, output_nc, ngf, netG, norm, use_dropout=False, init_type='normal', init_gain=0.02, gpu_ids=[], sampling_times=3):
     """Create a generator
 
     Parameters:
@@ -1074,7 +1074,7 @@ class Clinical2MicroGenerator(nn.Module):
     We adapt Torch code and idea from Justin Johnson's neural style transfer project(https://github.com/jcjohnson/fast-neural-style)
     """
 
-    def __init__(self, input_nc, output_nc, ngf=64, norm_layer=nn.BatchNorm2d, use_dropout=False, n_blocks=6, padding_type='reflect', upsampling_times=3):
+    def __init__(self, input_nc, output_nc, ngf=64, norm_layer=nn.InstanceNorm2d, use_dropout=False, n_blocks=9, padding_type='reflect', upsampling_times=1):
         """Construct a Resnet-based generator
 
         Parameters:
@@ -1086,7 +1086,7 @@ class Clinical2MicroGenerator(nn.Module):
             n_blocks (int)      -- the number of ResNet blocks
             padding_type (str)  -- the name of padding layer in conv layers: reflect | replicate | zero
         """
-        # bias就是normalization的方法
+        # biasを決める
         assert(n_blocks >= 0)
         super(Clinical2MicroGenerator, self).__init__()
         if type(norm_layer) == functools.partial:
