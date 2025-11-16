@@ -1,6 +1,7 @@
-#chmod +x test.sh 
-#./test.sh
-
+<< COMMENTOUT
+chmod +x inference_single.sh 
+./inference_single.sh
+COMMENTOUT
 
 pip install pytorch-ssim
 

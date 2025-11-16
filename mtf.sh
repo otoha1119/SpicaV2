@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 # MTF pipeline launcher (single-switch version)
-# - 先頭の変数で挙動を切り替えます
-# - ./run_mtf.sh だけで実行できます（引数不要）
+
+<< COMMENTOUT
+chmod +x mtf.sh 
+./mtf.sh
+COMMENTOUT
 
 set -euo pipefail
 

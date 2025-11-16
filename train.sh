@@ -1,10 +1,12 @@
 #実行コード
 # tensorboard --logdir checkpoints/SR_CycleGAN/runs --port 6006 --host 0.0.0.0
 # http://localhost:6006
-"""
-chmod +x run_auto.sh 
-./run_auto.sh
-"""
+
+<< COMMENTOUT
+chmod +x train.sh 
+./train.sh
+COMMENTOUT
+
 pip install pytorch-msssim
 set -e
 

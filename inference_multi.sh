@@ -1,4 +1,10 @@
 #!/usr/bin/env bash
+
+<< COMMENTOUT
+chmod +x inference_multi.sh 
+./inference_multi.sh
+COMMENTOUT
+
 set -euo pipefail
 
 IN_DIR="/workspace/DataSet/ImageCAS/001.ImgCast"
