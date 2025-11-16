@@ -56,8 +56,9 @@ if __name__ == '__main__':
     dataset_size = len(dataset) #1epochあたりのデータ枚数
 
     # 2) モデル & 可視化
-    model = create_model(opt) #モデルの生成(models/__init__.py)
-    model.setup(opt)          #継承元のbase_model.pyのsetup()を呼び出し(学習率スケジューラのセット，モデルのロード，ネットワーク構造の表示)
+    model = create_model(opt) #ネットワークとoptimizerのインスタンス作成
+
+    model.setup(opt)          #作成したインスタンスに対してLRスケジューラの作成(学習率スケジューラのセット，モデルのロード，ネットワーク構造の表示)
 
     # 従来 HTML（checkpoints/<name>/web）も残す
     visualizer_html = HtmlVisualizer(opt)
@@ -80,8 +81,8 @@ if __name__ == '__main__':
                     t_data = iter_start_time - iter_data_time #イテレーション間の時間計測
 
                 # 学習ステップ
-                model.set_input(data) #dataをモデル対応に変換,バッチをGPUに搭載
-                model.optimize_parameters(epoch) #学習本体
+                model.set_input(data) #インスタンス(model)に対してメソッド実行．dataをセット,バッチをGPUに搭載
+                model.optimize_parameters(epoch) #同じくメソッド実行，このメソッドが学習本体，損失計算，逆伝播，パラメータ更新まで全て実施
 
                 total_iters += opt.batch_size #累積イテレーションの更新
                 epoch_iter += opt.batch_size #エポック内イテレーションの更新
