@@ -1,2 +1,4 @@
 git-test-feature1
 git-testcode
+
+gittest-feature2
