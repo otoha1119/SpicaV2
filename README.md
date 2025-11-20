@@ -1,17 +1,18 @@
 # SpicaV2
 
-## Commit Message
+## 作業タグ
 add：新規機能追加<br>
-update：機能修正<br>
-upgrade：バージョンアップ<br>
-fix：バグ修正<br>
+modify：バグではない修正<br>
+fix：既存バグ修正<br>
 hotfix：クリティカルなバグ修正<br>
-change：仕様変更<br>
-clean：整理<br>
-remove：削除<br>
+refactor：整理<br>
+delete：削除<br>
+move:ファイル・フォルダの移動<br>
 revert：変更取り消し<br>
+other：その他<br>
 
-## Introduction
+
+## 概要
 本プロジェクトはSRーCycleGANを改良した超解像モデルである<br>
 dockerを用いて環境を構築している，50シリーズGPUと30シリーズGPUの両方ようのdockerフォルダがある<br>
 
@@ -33,3 +34,4 @@ gitの過去のコミットに強制的に戻るコマンドを自動化した�
 ・Tensorboard実行コード<br>
 tensorboard --logdir checkpoints/SR_CycleGAN/runs --port 6006 --host 0.0.0.0<br>
 http://localhost:6006<br>
+
