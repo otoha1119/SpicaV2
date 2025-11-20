@@ -78,6 +78,9 @@ class MedicalCycleGANModel(BaseModel):
             parser.add_argument('--lambda_identity', type=float, default=0.5,
                                 help=('use identity mapping. Setting lambda_identity other than 0 has an effect '
                                       'of scaling the weight of the identity mapping loss.')) #default0.2
+            parser.add_argument('--lambda_identity_ssim', type=float, default=0.5,
+                                help=('use identity mapping. Setting lambda_identity other than 0 has an effect '
+                                      'of scaling the weight of the identity mapping loss.')) #default0.2
             # Downsample and upsample losses disabled by default
             parser.add_argument('--lambda_downsample_loss', type=float, default=0.0,
                                 help='weight for downsample loss (set to 0.0 to disable)')
@@ -136,8 +139,8 @@ class MedicalCycleGANModel(BaseModel):
         BaseModel.__init__(self, opt)
         # specify the training losses you want to print out. The training/test scripts will call <BaseModel.get_current_losses>
         # Downsample, upsample and SSIM losses are omitted here because they are disabled by default.
-        self.loss_names = ['D_A', 'G_A', 'cycle_A', 'idt_A',
-                           'D_B', 'G_B', 'cycle_B', 'idt_B']
+        self.loss_names = ['D_A', 'G_A', 'cycle_A', 'idt_A', 'idt_ssim_A',
+                   'D_B', 'G_B', 'cycle_B', 'idt_B', 'idt_ssim_B']
         # specify the images you want to save/display. The training/test scripts will call <BaseModel.get_current_visuals>
         visual_names_A = ['real_A', 'fake_B', 'rec_A']
         visual_names_B = ['real_B', 'fake_A', 'rec_B']
@@ -240,11 +243,12 @@ class MedicalCycleGANModel(BaseModel):
         # scale factor for down/up sampling operations (not used when those losses are disabled)
         scale = int(2 ** int(self.opt.sampling_times))
         lambda_idt = self.opt.lambda_identity
+        lambda_idt_ssim = self.opt.lambda_identity_ssim
         lambda_A = self.opt.lambda_A
         lambda_B = self.opt.lambda_B
         # Identity loss
         
-        if lambda_idt > 0:
+        if (lambda_idt > 0) and (lambda_idt_ssim > 0):
             # G_A should be identity if real_B is fed: ||G_A(B) - B||
             self.idt_A = self.netG_A(F.interpolate(self.real_B, size=self.real_A.shape[-2:], mode='bilinear', align_corners=False))
             
@@ -255,8 +259,13 @@ class MedicalCycleGANModel(BaseModel):
             # Align idt_A spatial size with real_B
             # if self.idt_A.shape[-2:] != self.real_B.shape[-2:]:
             #     self.idt_A = F.interpolate(self.idt_A, size=self.real_B.shape[-2:], mode='bilinear', align_corners=False)
-            self.loss_idt_A = self.criterionIdt(self.idt_A, self.real_B) * lambda_B * lambda_idt
             
+            #L1
+            self.loss_idt_A = self.criterionIdt(self.idt_A, self.real_B) * lambda_B * lambda_idt
+            #SSIM
+            self.loss_idt_ssim_A = (1.0 - self.ssim(self.idt_A, self.real_B)) * lambda_B * lambda_idt_ssim
+
+
             # G_B should be identity if real_A is fed: ||G_B(A) - A||
             self.idt_B = self.netG_B(F.interpolate(self.real_A, size=self.real_B.shape[-2:], mode='bilinear', align_corners=False))
             # print(f"[DBG] idt_B {tuple(self.idt_B.shape)}")
@@ -267,10 +276,19 @@ class MedicalCycleGANModel(BaseModel):
             # if self.idt_B.shape[-2:] != self.real_A.shape[-2:]:
             #     self.idt_B = F.interpolate(self.idt_B, size=self.real_A.shape[-2:], mode='bilinear', align_corners=False)
             # Multiply by 0.1 to balance identity terms as in original implementation
+            
+            #L1
             self.loss_idt_B = self.criterionIdt(self.idt_B, self.real_A) * lambda_A * lambda_idt
+            #SSIM
+            self.loss_idt_ssim_B = (1.0 - self.ssim(self.idt_B, self.real_A)) * lambda_A * lambda_idt_ssim
+
         else:
             self.loss_idt_A = 0
             self.loss_idt_B = 0
+            self.loss_idt_ssim_A = 0
+            self.loss_idt_ssim_B = 0
+
+        
         # GAN loss D_A(G_A(A))
         self.loss_G_A = self.criterionGAN(self.netD_A(self.fake_B), True) * self.opt.lambda_G_A
         # GAN loss D_B(G_B(B))
@@ -290,8 +308,10 @@ class MedicalCycleGANModel(BaseModel):
         self.loss_clinical_ssim = 0
         self.loss_micro_ssim = 0
         # Combined generator loss (exclude disabled losses)
-        self.loss_G = (self.loss_G_A + self.loss_G_B + self.loss_cycle_A + self.loss_cycle_B +
-                       self.loss_idt_A + self.loss_idt_B)
+        self.loss_G = (self.loss_G_A + self.loss_G_B +
+               self.loss_cycle_A + self.loss_cycle_B +
+               self.loss_idt_A + self.loss_idt_B +
+               self.loss_idt_ssim_A + self.loss_idt_ssim_B)
         self.loss_G.backward()
 
     def optimize_parameters(self, epoch):
