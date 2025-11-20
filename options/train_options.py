@@ -41,7 +41,7 @@ class TrainOptions(BaseOptions):
         parser.add_argument('--beta1', type=float, default=0.5)
         parser.add_argument('--lr', type=float, default=1e-5)
         parser.add_argument('--lr_G', type=float, default=1e-5)
-        parser.add_argument('--lr_D', type=float, default=1e-6)
+        parser.add_argument('--lr_D', type=float, default=1e-7)
         parser.add_argument('--gan_mode', type=str, default='lsgan')
         parser.add_argument('--lr_policy', type=str, default='linear')
         parser.add_argument('--lr_decay_iters', type=int, default=50)
