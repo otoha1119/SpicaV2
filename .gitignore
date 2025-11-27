@@ -114,4 +114,4 @@ venv.bak/
 .mypy_cache/
 
 
-results/001.ImgCast
+results/001.ImgCast.DS_Store
