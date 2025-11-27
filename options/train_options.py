@@ -69,8 +69,8 @@ class TrainOptions(BaseOptions):
 
         # ボディマスク（OFF が既定）
         parser.add_argument('--use_body_mask', action='store_true')
-        parser.add_argument('--body_thresh_norm', type=float, default=0.1)
-        parser.add_argument('--min_body_coverage', type=float, default=0.3)
+        parser.add_argument('--body_thresh_norm', type=float, default=0.05)
+        parser.add_argument('--min_body_coverage', type=float, default=0.8) #黒い部分が8割以上ならリトライ
 
         # ---- 以下、元の大量の専用パス等は削除/非推奨化 ----
         # * all_*_paths / encoder_path / code_channel など研究固有のものは一旦撤去。
