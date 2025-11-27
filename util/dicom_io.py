@@ -39,15 +39,26 @@ def read_normalized_pixels(path: str) -> np.ndarray:
     require_pydicom()
     ds = pydicom.dcmread(path)
     arr = ds.pixel_array.astype(np.int32)
-    norm = (arr + 1024.0) / 4095.0
-    norm = np.clip(norm, 0.0, 1.0).astype(np.float32)
-    return norm
+    norm = (arr + 1120.0) / 4095.0
+    #norm = np.clip(norm, 0.0, 1.0).astype(np.float32)
+
+    norm01 = (arr + 1120.0) / 4095.0
+    norm01 = np.clip(norm01, 0.0, 1.0)
+    norm = norm01 * 2.0 - 1.0
+    
+    return norm.astype(np.float32)
 
 def denormalize_to_int16(norm: np.ndarray) -> np.ndarray:
-    return np.rint(norm * 4095.0 - 1024.0).astype(np.int16)
+    # [-1,1] → [0,1]
+    norm01 = (norm.astype(np.float32) + 1.0) / 2.0
+    norm01 = np.clip(norm01, 0.0, 1.0)
 
-def compute_body_mask(norm_img: np.ndarray, thresh_norm: float = 0.1, min_area: int = 64) -> np.ndarray:
-    mask = (norm_img > thresh_norm).astype(np.uint8)
+    # [0,1] → 元の int16 HU スケールへ
+    return np.rint(norm01 * 4095.0 - 1120.0).astype(np.int16)
+
+def compute_body_mask(norm_img: np.ndarray, thresh_norm: float = 0.05, min_area: int = 64) -> np.ndarray:
+    img01 = (norm_img + 1.0) / 2.0
+    mask = (img01 > thresh_norm).astype(np.uint8)
     try:
         from scipy import ndimage as ndi
         labeled, n = ndi.label(mask)
