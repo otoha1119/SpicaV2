@@ -39,12 +39,12 @@ def read_normalized_pixels(path: str) -> np.ndarray:
     require_pydicom()
     ds = pydicom.dcmread(path)
     arr = ds.pixel_array.astype(np.int32)
-    norm = (arr + 1152.0) / 4095.0
+    norm = (arr + 2048.0) / 6143.0
     norm = np.clip(norm, 0.0, 1.0).astype(np.float32)
     return norm
 
 def denormalize_to_int16(norm: np.ndarray) -> np.ndarray:
-    return np.rint(norm * 4095.0 - 1152.0).astype(np.int16)
+    return np.rint(norm * 6143.0 - 2048.0).astype(np.int16)
 
 def compute_body_mask(norm_img: np.ndarray, thresh_norm: float = 0.1, min_area: int = 64) -> np.ndarray:
     mask = (norm_img > thresh_norm).astype(np.uint8)

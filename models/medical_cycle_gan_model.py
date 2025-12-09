@@ -75,10 +75,10 @@ class MedicalCycleGANModel(BaseModel):
                                 help='weight for cycle loss (A -> B -> A)')
             parser.add_argument('--lambda_B', type=float, default=1.0,
                                 help='weight for cycle loss (B -> A -> B)')
-            parser.add_argument('--lambda_identity', type=float, default=0.5,
+            parser.add_argument('--lambda_identity', type=float, default=0.1,
                                 help=('use identity mapping. Setting lambda_identity other than 0 has an effect '
                                       'of scaling the weight of the identity mapping loss.')) #default0.2
-            parser.add_argument('--lambda_identity_ssim', type=float, default=0.5,
+            parser.add_argument('--lambda_identity_ssim', type=float, default=0,
                                 help=('use identity mapping. Setting lambda_identity other than 0 has an effect '
                                       'of scaling the weight of the identity mapping loss.')) #default0.2
             # Downsample and upsample losses disabled by default
@@ -248,9 +248,11 @@ class MedicalCycleGANModel(BaseModel):
         lambda_B = self.opt.lambda_B
         # Identity loss
         
-        if (lambda_idt > 0) and (lambda_idt_ssim > 0):
+        if (lambda_idt > 0) or (lambda_idt_ssim > 0):
             # G_A should be identity if real_B is fed: ||G_A(B) - B||
             self.idt_A = self.netG_A(F.interpolate(self.real_B, size=self.real_A.shape[-2:], mode='bilinear', align_corners=False))
+
+
             
             # print(f"[DBG] idt_A {tuple(self.idt_A.shape)}")
             # print(f"[DBG] real_B {tuple(self.real_B.shape)}")
