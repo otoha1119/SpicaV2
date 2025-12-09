@@ -71,6 +71,20 @@ class TrainOptions(BaseOptions):
         parser.add_argument('--use_body_mask', action='store_true')
         parser.add_argument('--body_thresh_norm', type=float, default=0.05)
         parser.add_argument('--min_body_coverage', type=float, default=0.8) #黒い部分が8割以上ならリトライ
+        
+        # データローダー最適化オプション
+        parser.add_argument('--dicom_cache_size', type=int, default=100,
+                            help='Number of DICOM images to cache in memory (LRU). Set to 0 to disable caching.')
+        parser.add_argument('--pin_memory', action='store_true', default=True,
+                            help='Pin memory for faster GPU transfer (default: True if CUDA available)')
+        parser.add_argument('--no_pin_memory', dest='pin_memory', action='store_false',
+                            help='Disable pin memory')
+        parser.add_argument('--persistent_workers', action='store_true', default=True,
+                            help='Keep worker processes alive between epochs (default: True)')
+        parser.add_argument('--no_persistent_workers', dest='persistent_workers', action='store_false',
+                            help='Disable persistent workers')
+        parser.add_argument('--prefetch_factor', type=int, default=2,
+                            help='Number of batches prefetched by each worker (default: 2)')
 
         # ---- 以下、元の大量の専用パス等は削除/非推奨化 ----
         # * all_*_paths / encoder_path / code_channel など研究固有のものは一旦撤去。
