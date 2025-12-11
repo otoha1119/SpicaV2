@@ -75,7 +75,8 @@ def main():
     # 保存
     ref_path = data["A_paths"]
     if isinstance(ref_path, (list, tuple)):
-        ref_path = ref_path[0]   
+        ref_path = ref_path[0]
+    ref_ds = pydicom.dcmread(ref_path) 
     
     save_dicom_like(
         reference_path=ref_path,

@@ -17,7 +17,7 @@ if ~exist(outputImageDir, 'dir')
 end
 if ~exist(outputHistDir, 'dir')
     mkdir(outputHistDir);
-end
+end+-
 
 %% ============================================================
 % 1. 入力ファイルチェック
