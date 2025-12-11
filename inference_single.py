@@ -13,7 +13,7 @@ import torch.nn as nn
 # ---------- 正規化/逆正規化（学習規約と一致） ----------
 def unit01_to_hu(unit: np.ndarray) -> np.ndarray:
     """[0,1] -> HU。学習時の規約：HU = unit*4095 - 1152"""
-    hu = unit * 4095.0 - 1152.0
+    hu = unit * 6143.0 - 2048.0
     return hu.astype(np.float32)
 
 def hu_to_stored_like_ref(hu_img: np.ndarray, ref_ds: pydicom.dataset.FileDataset) -> np.ndarray:
