@@ -22,8 +22,8 @@ import torch.nn as nn
 
 # ---------- utils copied from single-inference ----------
 def unit01_to_hu(unit: np.ndarray) -> np.ndarray:
-    """[0,1] -> HU。学習時の規約：HU = unit*4095 - 1024"""
-    hu = unit * 4095.0 - 1024.0
+    """[0,1] -> HU。学習時の規約：HU = unit*4095 - 1052"""
+    hu = unit * 6143.0 - 2048.0
     return hu.astype(np.float32)
 
 def hu_to_stored_like_ref(hu_img: np.ndarray, ref_ds: pydicom.dataset.FileDataset) -> np.ndarray:

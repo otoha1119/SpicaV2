@@ -2,6 +2,7 @@ from __future__ import annotations
 import os
 import random
 from typing import Dict, Any, List, Tuple
+from collections import OrderedDict
 
 import numpy as np
 import torch
@@ -45,6 +46,10 @@ class DicomCtpcct2xDataset(BaseDataset):
         self.body_thresh_norm: float = float(opt.body_thresh_norm)
         self.min_body_coverage: float = float(opt.min_body_coverage)
         self.epoch_size: int = int(getattr(opt, 'epoch_size', 0))
+        
+        # キャッシュ設定
+        self.cache_size: int = int(getattr(opt, 'dicom_cache_size', 100))
+        self._image_cache: OrderedDict = OrderedDict()
 
         # Scan LR/HR series
         self.lr_series: Dict[str, List[str]] = self._scan_series(self.lr_root)
@@ -105,6 +110,31 @@ class DicomCtpcct2xDataset(BaseDataset):
             return random.choice(self.hr_slices)[1]
         return self.hr_slices[idx % len(self.hr_slices)][1]
 
+    def _get_cached_image(self, path: str) -> np.ndarray:
+        """LRUキャッシュを使用して画像を取得"""
+        if self.cache_size <= 0:
+            # キャッシュ無効の場合
+            return dio.read_normalized_pixels(path)
+        
+        # キャッシュに存在する場合
+        if path in self._image_cache:
+            # 最新アクセスとして先頭に移動
+            self._image_cache.move_to_end(path)
+            return self._image_cache[path].copy()
+        
+        # キャッシュに存在しない場合、読み込んでキャッシュに追加
+        img = dio.read_normalized_pixels(path)
+        
+        # キャッシュサイズ制限チェック
+        if len(self._image_cache) >= self.cache_size:
+            # 最も古いエントリを削除（LRU）
+            self._image_cache.popitem(last=False)
+        
+        # キャッシュに追加（コピーを保存）
+        self._image_cache[path] = img.copy()
+        
+        return img
+
     # ---------- PyTorch Dataset API ----------
     def __len__(self) -> int:
         # Always return INT
@@ -112,9 +142,9 @@ class DicomCtpcct2xDataset(BaseDataset):
         return int(self._len)
 
     def __getitem__(self, index: int) -> Dict[str, Any]:
-        # 1) Load LR slice (normalized [0,1])
+        # 1) Load LR slice (normalized [0,1]) - キャッシュ使用
         lr_path = self._sample_lr_path(index)
-        lr_img = dio.read_normalized_pixels(lr_path)  # HxW float32 in [0,1]
+        lr_img = self._get_cached_image(lr_path)  # HxW float32 in [0,1]
         lr_mask = dio.compute_body_mask(lr_img, self.body_thresh_norm) if self.use_body_mask else None
         lr_crop = dio.crop_random(
             lr_img, self.lr_patch,
@@ -122,9 +152,9 @@ class DicomCtpcct2xDataset(BaseDataset):
             min_coverage=self.min_body_coverage if self.use_body_mask else 0.0
         )
 
-        # 2) Load HR slice (normalized [0,1])
+        # 2) Load HR slice (normalized [0,1]) - キャッシュ使用
         hr_path = self._sample_hr_path(index)
-        hr_img = dio.read_normalized_pixels(hr_path)
+        hr_img = self._get_cached_image(hr_path)
         hr_mask = dio.compute_body_mask(hr_img, self.body_thresh_norm) if self.use_body_mask else None
         hr_crop = dio.crop_random(
             hr_img, self.hr_patch,

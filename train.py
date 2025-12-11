@@ -17,6 +17,7 @@ if __name__ == '__main__':
     print(
         f"[INFO] scale={opt.scale}, sampling_times={opt.sampling_times}, "
         f"lr_patch={opt.lr_patch}, hr_patch={opt.hr_patch}"
+        f"lr_G={opt.lr_G}, lr_D={opt.lr_D}"
     )
 
     # 2) ログ / checkpoints の初期化
