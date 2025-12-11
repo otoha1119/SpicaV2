@@ -10,9 +10,9 @@ set -euo pipefail
 
 ### ================== 設定（ここだけ編集すればOK） ================== ###
 # DICOM ディレクトリ
-LR_DIR="/workspace/DataSet/ImageCAS/003.ImgCast"
-SR_DIR="/workspace/results/001.ImgCast"
-HR_DIR="/workspace/DataSet/photonCT/PhotonCT1024v2/DICOMSAVE-20240514142921-000"
+LR_DIR="/workspace/DataSet/ImageCAS_v3/EID-003"
+SR_DIR="/workspace/results/EID-003-results"
+HR_DIR="/workspace/DataSet/photonCT/PhotonCT1024v3/PCD-001"
 
 # 出力先
 OUT_DIR="/workspace/results"
