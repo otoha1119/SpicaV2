@@ -15,7 +15,6 @@ display_winsize: 256
 epoch: 200
 eval: False
 gpu_ids: 0 [default: 1]
-halves_pixel_spacing: True [default: False]
 init_gain: 0.02
 init_type: normal
 input_dicom: /workspace/IM_091.dcm [default: None]
@@ -46,7 +45,6 @@ num_test: 50
 num_threads: 4
 output_dicom: /workspace/results/SR_2x.dcm [default: results/SR_2x.dcm]
 output_nc: 1
-pad_mod: 4
 phase: test
 preprocess: resize_and_crop
 results_dir: ./results/
