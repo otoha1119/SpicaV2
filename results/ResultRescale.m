@@ -3,13 +3,13 @@ clc; clear;
 %% ============================================================
 % 0. ユーザー設定（ここだけ書き換えればOK）
 % =============================================================
-dicomPath = "/Users/otoha/Documents/Resurch/Results/07IM_091_SR2x.dcm";
+dicomPath = "/Users/otoha/Library/CloudStorage/OneDrive-学校法人立命館/Results/07IM_091_SR2x.dcm";
 
 % JPEG 出力フォルダ（存在しなければ自動生成）
-outputImageDir = "/Users/otoha/Documents/Resurch/Results";
+outputImageDir = "/Users/otoha/Library/CloudStorage/OneDrive-学校法人立命館/Results";
 outputHistDir  = outputImageDir;
 
-%保存の有無
+%保存の有無 1で保存0で保存なし
 save_flug = 0;
 
 %% ============================================================
@@ -20,7 +20,7 @@ if ~exist(outputImageDir, 'dir')
 end
 if ~exist(outputHistDir, 'dir')
     mkdir(outputHistDir);
-end+-
+end
 
 %% ============================================================
 % 1. 入力ファイルチェック
@@ -73,27 +73,38 @@ end
 
 
 %% ============================================================
-% 6. ヒストグラム表示 ＋ JPEG 保存
+% 6. ヒストグラム表示 ＋ JPEG 保存（縦軸：パーセンテージ）
 % =============================================================
 img_for_hist = img(img >= minHU & img <= maxHU);
 
-fig = figure;
+% Figure 作成（ウィンドウ名をファイル名ベースに）
+fig = figure('Name', baseName + "_hist", 'NumberTitle', 'off');
+
+% 確率で正規化（0〜1）してヒストグラム表示
 histogram(img_for_hist, 512, ...
     'FaceColor', [0.4 0.4 0.4], ...
-    'EdgeColor', 'none');
+    'EdgeColor', 'none', ...
+    'Normalization', 'probability');  % ★ ここで件数→確率に変換
 
 title(sprintf('HU Distribution (%s)', baseName), 'Interpreter','none');
 xlabel('HU value');
-ylabel('Frequency');
+ylabel('Percentage (%)');
 xlim([minHU, maxHU]);
 
+% Y軸目盛りを 0〜1 → 0〜100 (%) 表示に変換
+ax = gca;
+yt = ax.YTick;                        % 例: [0 0.02 0.04 ...]
+ax.YTickLabel = compose('%.1f', yt * 100);  % 例: [0.0 2.0 4.0 ...]%
+
 % 保存
-jpegHistName = fullfile(outputHistDir, baseName + "_hist.jpg");
-saveas(fig, jpegHistName);
+if(save_flug==1)
+    jpegHistName = fullfile(outputHistDir, baseName + "_hist.jpg");
+    saveas(fig, jpegHistName);
+end
 
 fprintf("ヒストグラム JPEG を保存しました: %s\n", jpegHistName);
+fprintf("\n=== 全処理完了しました ===\n");
 
-fprintf("\n=== 全処理完了しました！ ===\n");
 
 
     
