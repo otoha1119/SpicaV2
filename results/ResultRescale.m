@@ -3,11 +3,14 @@ clc; clear;
 %% ============================================================
 % 0. ユーザー設定（ここだけ書き換えればOK）
 % =============================================================
-dicomPath = "D:\DataSet\photonCT\PhotonCT1024v3\PCD-001\PCD-001-001.dcm";
+dicomPath = "/Users/otoha/Documents/Resurch/Results/07IM_091_SR2x.dcm";
 
 % JPEG 出力フォルダ（存在しなければ自動生成）
-outputImageDir = "C:\Users\ri0157ip\Downloads";
-outputHistDir  = "C:\Users\ri0157ip\Downloads";
+outputImageDir = "/Users/otoha/Documents/Resurch/Results";
+outputHistDir  = outputImageDir;
+
+%保存の有無
+save_flug = 0;
 
 %% ============================================================
 % 出力フォルダ作成
@@ -55,12 +58,19 @@ img_norm = uint8(255 * (img_clipped - minHU) / (maxHU - minHU));
 [~, baseName, ~] = fileparts(dicomPath);
 jpegImageName = fullfile(outputImageDir, baseName + "_converted.jpg");
 
-figure;
+% figure をハンドル付きで作成して、ウィンドウ名を変更
+fig = figure;
+set(fig, 'Name', baseName, 'NumberTitle', 'off');
+
 imshow(img_norm, []);
 title("Converted JPEG Image (Clipped -2048〜2048)");
-imwrite(img_norm, jpegImageName);
 
-fprintf("画像 JPEG を保存しました: %s\n", jpegImageName);
+if(save_flug ==1)
+    imwrite(img_norm, jpegImageName);
+    fprintf("画像 JPEG を保存しました: %s\n", jpegImageName);
+end
+
+
 
 %% ============================================================
 % 6. ヒストグラム表示 ＋ JPEG 保存
