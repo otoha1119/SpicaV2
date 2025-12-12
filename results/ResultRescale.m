@@ -3,7 +3,7 @@ clc; clear;
 %% ============================================================
 % 0. ユーザー設定（ここだけ書き換えればOK）
 % =============================================================
-dicomPath = "/Users/otoha/Library/CloudStorage/OneDrive-学校法人立命館/Results/07IM_091_SR2x.dcm";
+dicomPath = "/Users/otoha/Library/CloudStorage/OneDrive-学校法人立命館/Results/06IM_091_SR2x.dcm";
 
 % PNG 出力フォルダ（存在しなければ自動生成）
 outputImageDir = "/Users/otoha/Library/CloudStorage/OneDrive-学校法人立命館/Results";
@@ -77,33 +77,35 @@ end
 % =============================================================
 img_for_hist = img(img >= minHU & img <= maxHU);
 
-% Figure 作成（ウィンドウ名をファイル名ベースに）
-fig = figure('Name', baseName + "_hist", 'NumberTitle', 'off');
+fig = figure( ...
+    'Units','pixels', ...
+    'Position',[100 100 812 595], ...
+    'Color','w');
 
-% 確率で正規化（0〜1）してヒストグラム表示
 histogram(img_for_hist, 512, ...
-    'FaceColor', [0.4 0.4 0.4], ...
-    'EdgeColor', 'none', ...
-    'Normalization', 'probability');  % ★ ここで件数→確率に変換
+    'FaceColor',[0.6 0.6 0.6], ...
+    'EdgeColor','none', ...
+    'Normalization','probability');
 
-title(sprintf('HU Distribution (%s)', baseName), 'Interpreter','none');
+xlim([minHU maxHU]);
+ylim([0 0.02]);
+
 xlabel('HU value');
 ylabel('Percentage (%)');
-xlim([minHU, maxHU]);
-ylim([0 0.02]);   % ★ ここで縦軸固定（0〜2%）
+title(sprintf('HU Distribution (%s)', baseName), 'Interpreter','none');
 
-% Y軸目盛りを 0〜1 → 0〜100 (%) 表示に変換
 ax = gca;
-yt = ax.YTick;                        % 例: [0 0.02 0.04 ...]
-ax.YTickLabel = compose('%.1f', yt * 100);  % 例: [0.0 2.0 4.0 ...]%
+ax.Units = 'normalized';
+ax.Position = [0.12 0.10 0.83 0.80];
 
+ax.YTickLabel = compose('%.1f', ax.YTick * 100);
 
-% 保存
-if(save_flug==1)
+if save_flug == 1
     pngHistName = fullfile(outputHistDir, "hist_" + baseName + ".png");
-    saveas(fig, pngHistName);
-    fprintf("ヒストグラム PNG を保存しました: %s\n", pngHistName);
+    exportgraphics(fig, pngHistName, ...
+        'Resolution', 72);   % ← 72 dpi 固定
 end
+
 
 
 fprintf("\n=== 全処理完了しました ===\n");
