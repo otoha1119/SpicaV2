@@ -5,12 +5,12 @@ clc; clear;
 % =============================================================
 dicomPath = "/Users/otoha/Library/CloudStorage/OneDrive-学校法人立命館/Results/07IM_091_SR2x.dcm";
 
-% JPEG 出力フォルダ（存在しなければ自動生成）
+% PNG 出力フォルダ（存在しなければ自動生成）
 outputImageDir = "/Users/otoha/Library/CloudStorage/OneDrive-学校法人立命館/Results";
 outputHistDir  = outputImageDir;
 
 %保存の有無 1で保存0で保存なし
-save_flug = 0;
+save_flug = 1;
 
 %% ============================================================
 % 出力フォルダ作成
@@ -48,26 +48,26 @@ maxHU = 2048;
 img_clipped = max(min(img, maxHU), minHU);
 
 %% ============================================================
-% 4. JPEG 用に 0〜255 正規化
+% 4. PNG 用に 0〜255 正規化
 % =============================================================
 img_norm = uint8(255 * (img_clipped - minHU) / (maxHU - minHU));
 
 %% ============================================================
-% 5. JPEG 画像表示 ＋ 保存
+% 5. PNG 画像表示 ＋ 保存
 % =============================================================
 [~, baseName, ~] = fileparts(dicomPath);
-jpegImageName = fullfile(outputImageDir, baseName + "_converted.jpg");
+pngImageName = fullfile(outputImageDir, "converted_"+ baseName + ".png");
 
 % figure をハンドル付きで作成して、ウィンドウ名を変更
 fig = figure;
 set(fig, 'Name', baseName, 'NumberTitle', 'off');
 
 imshow(img_norm, []);
-title("Converted JPEG Image (Clipped -2048〜2048)");
+title("Converted PNG Image (Clipped -2048〜2048)");
 
 if(save_flug ==1)
-    imwrite(img_norm, jpegImageName);
-    fprintf("画像 JPEG を保存しました: %s\n", jpegImageName);
+    imwrite(img_norm, pngImageName);
+    fprintf("画像 PNG を保存しました: %s\n", pngImageName);
 end
 
 
@@ -90,19 +90,22 @@ title(sprintf('HU Distribution (%s)', baseName), 'Interpreter','none');
 xlabel('HU value');
 ylabel('Percentage (%)');
 xlim([minHU, maxHU]);
+ylim([0 0.02]);   % ★ ここで縦軸固定（0〜2%）
 
 % Y軸目盛りを 0〜1 → 0〜100 (%) 表示に変換
 ax = gca;
 yt = ax.YTick;                        % 例: [0 0.02 0.04 ...]
 ax.YTickLabel = compose('%.1f', yt * 100);  % 例: [0.0 2.0 4.0 ...]%
 
+
 % 保存
 if(save_flug==1)
-    jpegHistName = fullfile(outputHistDir, baseName + "_hist.jpg");
-    saveas(fig, jpegHistName);
+    pngHistName = fullfile(outputHistDir, "hist_" + baseName + ".png");
+    saveas(fig, pngHistName);
+    fprintf("ヒストグラム PNG を保存しました: %s\n", pngHistName);
 end
 
-fprintf("ヒストグラム JPEG を保存しました: %s\n", jpegHistName);
+
 fprintf("\n=== 全処理完了しました ===\n");
 
 
