@@ -275,6 +275,7 @@ def main():
             int(data.get("pad_b", 0)),
         )
 
+<<<<<<< HEAD
         # (H,W) へ
         if out.shape[0] == 1:
             out2d = out[0].numpy()

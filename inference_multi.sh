@@ -7,9 +7,9 @@ COMMENTOUT
 
 set -euo pipefail
 
-IN_DIR="/workspace/DataSet/ImageCAS/001.ImgCast"
+IN_DIR="/workspace/DataSet/ImageCAS_v3/EID-001"
 STAMP="$(date +%Y%m%d-%H%M%S)"
-OUT_DIR="/workspace/results/001.ImgCast"
+OUT_DIR="/workspace/results/EID-001-results"
 GPU_IDS="0"
 
 export INPUT_DIR="$IN_DIR"

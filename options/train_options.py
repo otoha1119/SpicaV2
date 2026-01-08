@@ -48,9 +48,9 @@ class TrainOptions(BaseOptions):
 
         # ====== ここから dataset 固有設定を「中央集約」 ======
         # ルート（元々 dataset.modify_commandline_options にあった）
-        parser.add_argument('--lr_root', type=str, default='/workspace/DataSet/ImageCAS',
+        parser.add_argument('--lr_root', type=str, default='/workspace/DataSet/ImageCAS_v3',
                             help='Root directory for LR DICOM tree')
-        parser.add_argument('--hr_root', type=str, default='/workspace/DataSet/photonCT/PhotonCT1024v2',
+        parser.add_argument('--hr_root', type=str, default='/workspace/DataSet/photonCT/PhotonCT1024v3',
                             help='Root directory for HR DICOM tree')
 
         # クロップ設定：単一ソース化（推奨：lr_patch + scale から hr_patch を導出）

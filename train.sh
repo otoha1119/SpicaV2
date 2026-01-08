@@ -3,6 +3,7 @@
 # http://localhost:6006
 
 << COMMENTOUT
+sed -i 's/\r$//' train.sh
 chmod +x train.sh 
 ./train.sh
 COMMENTOUT
@@ -21,19 +22,19 @@ echo "=== 依存関係をインストールします ==="
 echo "=== 依存関係インストール完了 ==="
 
 echo "=== 学習を開始します ==="
-python train.py --dataroot /workspace/DataSet/ImageCAS \
+python train.py --dataroot /workspace/DataSet/ImageCAS_v3 \
                 --name SR_CycleGAN \
                 --model medical_cycle_gan \
                 --direction AtoB \
                 --dataset_mode dicom_ctpcct_2x \
-                --batch_size 16 \
+                --batch_size 5 \
                 --epoch 200 \
                 --niter 100 \
                 --niter_decay 100 \
                 --gpu_ids 0 \
-                --hr_root /workspace/DataSet/photonCT/PhotonCT1024v2 \
-                --lr_root /workspace/DataSet/ImageCAS \
-                --num_threads 4 \
+                --hr_root /workspace/DataSet/photonCT/PhotonCT1024v3 \
+                --lr_root /workspace/DataSet/ImageCAS_v3 \
+                --num_threads 16 \
                 --fast_scan \
                 --limit_per_patient 0 \
                 #--verbose \

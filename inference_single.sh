@@ -14,12 +14,10 @@ python inference_single.py \
   --ngf 64 \
   --input_nc 1 --output_nc 1 \
   --name SR_CycleGAN \
-  --checkpoints_dir /workspace/checkpoints \
-  --epoch 136 \
+  --checkpoints_dir /workspace/checkpoints_mac \
+  --epoch 200 \
   --use_G A \
   --input_dicom /workspace/IM_091.dcm \
   --output_dicom /workspace/results/SR_2x.dcm \
-  --halves_pixel_spacing \
-  --pad_mod 4 \
   --gpu_ids 0\
   --sampling_times 1
