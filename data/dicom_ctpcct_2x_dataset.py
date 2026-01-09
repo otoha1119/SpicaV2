@@ -56,6 +56,7 @@ class DicomCtpcct2xDataset(BaseDataset):
         self.similar_crop_max_retries: int = int(getattr(opt, 'similar_crop_max_retries', 3))
         self.similar_crop_max_value_diff_threshold: float = float(getattr(opt, 'similar_crop_max_value_diff_threshold', 0.3))
         self.similar_crop_range_position_threshold: float = float(getattr(opt, 'similar_crop_range_position_threshold', 0.2))
+        self.similar_crop_range_overlap_threshold: float = float(getattr(opt, 'similar_crop_range_overlap_threshold', 0.5))
         self.similar_crop_histogram_diff_threshold: float = float(getattr(opt, 'similar_crop_histogram_diff_threshold', 0.5))
         self.similar_crop_top_pixel_ratio: float = float(getattr(opt, 'similar_crop_top_pixel_ratio', 0.05))
         
@@ -228,6 +229,7 @@ class DicomCtpcct2xDataset(BaseDataset):
                 median_diff_threshold=self.similar_crop_median_threshold,
                 max_value_diff_threshold=self.similar_crop_max_value_diff_threshold,
                 range_position_threshold=self.similar_crop_range_position_threshold,
+                range_overlap_threshold=self.similar_crop_range_overlap_threshold,
                 histogram_diff_threshold=self.similar_crop_histogram_diff_threshold,
                 top_pixel_ratio=self.similar_crop_top_pixel_ratio
             )

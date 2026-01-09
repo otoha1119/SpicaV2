@@ -99,6 +99,8 @@ class TrainOptions(BaseOptions):
                             help='Max difference threshold for top pixel max value (0-1 range). See util/dicom_io.py SIMILAR_CROP_MAX_VALUE_DIFF_THRESHOLD for default value.')
         parser.add_argument('--similar_crop_range_position_threshold', type=float, default=0.2,
                             help='Max difference threshold for top pixel range position (min/max values, 0-1 range). See util/dicom_io.py SIMILAR_CROP_RANGE_POSITION_THRESHOLD for default value.')
+        parser.add_argument('--similar_crop_range_overlap_threshold', type=float, default=0.5,
+                            help='Min overlap ratio threshold for top pixel ranges (0-1 range, default: 0.5 = 50%% overlap required). See util/dicom_io.py SIMILAR_CROP_RANGE_OVERLAP_THRESHOLD for default value.')
         parser.add_argument('--similar_crop_histogram_diff_threshold', type=float, default=0.5,
                             help='Max histogram distance threshold (KL divergence-like, default: 0.5). See util/dicom_io.py SIMILAR_CROP_HISTOGRAM_DIFF_THRESHOLD for default value.')
         parser.add_argument('--similar_crop_top_pixel_ratio', type=float, default=0.05,

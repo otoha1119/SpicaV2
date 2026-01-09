@@ -14,8 +14,8 @@ except Exception as e:
 # この値以上差がある場合はHR画像を選び直す
 SIMILAR_CROP_MEDIAN_DIFF_THRESHOLD = 0.15
 
-# 使用するパーセンタイル（より詳細な分布を捉えるため拡張）
-SIMILAR_CROP_PERCENTILES = [10.0, 25.0, 50.0, 75.0, 90.0]
+# 使用するパーセンタイル（5%刻みで詳細な分布を捉える）
+SIMILAR_CROP_PERCENTILES = [5.0, 10.0, 15.0, 20.0, 25.0, 30.0, 35.0, 40.0, 45.0, 50.0, 55.0, 60.0, 65.0, 70.0, 75.0, 80.0, 85.0, 90.0, 95.0]
 
 # 値域分割の閾値（低値域、中値域、高値域に分割）
 SIMILAR_CROP_LOW_RANGE_THRESHOLD = 0.33   # 低値域: 0 ～ 33%
@@ -32,6 +32,8 @@ SIMILAR_CROP_TOP_PIXEL_RATIO = 0.05
 SIMILAR_CROP_MAX_VALUE_DIFF_THRESHOLD = 0.3
 # 値域の位置一致の閾値（最小値と最大値の差、0-1の範囲、デフォルト: 0.2 = 20%）
 SIMILAR_CROP_RANGE_POSITION_THRESHOLD = 0.2
+# 値域の重なり比率の閾値（0-1の範囲、デフォルト: 0.5 = 50%以上重なっている必要がある）
+SIMILAR_CROP_RANGE_OVERLAP_THRESHOLD = 0.5
 
 # ヒストグラムベースの類似度の閾値（KLダイバージェンス、デフォルト: 0.5）
 SIMILAR_CROP_HISTOGRAM_DIFF_THRESHOLD = 0.5
@@ -275,6 +277,7 @@ def crop_similar_with_retry(
     median_diff_threshold: float = None,
     max_value_diff_threshold: float = None,
     range_position_threshold: float = None,
+    range_overlap_threshold: float = None,
     histogram_diff_threshold: float = None,
     top_pixel_ratio: float = None
 ) -> Tuple[np.ndarray, int]:
@@ -355,6 +358,29 @@ def crop_similar_with_retry(
             
             # 値域の位置が大きくずれている場合は除外（最小値と最大値の両方が近い必要がある）
             if min_diff > range_position_threshold or max_diff > range_position_threshold:
+                continue  # この候補は除外
+            
+            # 値域の重なりをチェック（上位5%の値域が十分に重なっている必要がある）
+            overlap_min = max(ref_top_min, cand_top_min)
+            overlap_max = min(ref_top_max, cand_top_max)
+            overlap = max(0.0, overlap_max - overlap_min)
+            ref_range_width = ref_top_max - ref_top_min
+            cand_range_width = cand_top_max - cand_top_min
+            max_range_width = max(ref_range_width, cand_range_width, 1e-10)
+            overlap_ratio = overlap / max_range_width
+            
+            # 値域の重なりが少ない場合は除外
+            if overlap_ratio < range_overlap_threshold:
+                continue  # この候補は除外
+            
+            # 値域の中心位置と幅の差もチェック（追加の厳密性チェック）
+            ref_center = (ref_top_min + ref_top_max) / 2.0
+            cand_center = (cand_top_min + cand_top_max) / 2.0
+            center_diff = abs(cand_center - ref_center)
+            width_diff = abs(cand_range_width - ref_range_width)
+            
+            # 中心位置または幅の差が大きすぎる場合は除外
+            if center_diff > range_position_threshold or width_diff > range_position_threshold:
                 continue  # この候補は除外
             
             # ヒストグラム距離を計算
