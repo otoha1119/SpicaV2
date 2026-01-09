@@ -97,8 +97,10 @@ class TrainOptions(BaseOptions):
                             help='Max number of HR image retries')
         parser.add_argument('--similar_crop_max_value_diff_threshold', type=float, default=0.3,
                             help='Max difference threshold for top pixel max value (0-1 range). See util/dicom_io.py SIMILAR_CROP_MAX_VALUE_DIFF_THRESHOLD for default value.')
-        parser.add_argument('--similar_crop_range_diff_threshold', type=float, default=0.3,
-                            help='Max difference threshold for top pixel range (0-1 range). See util/dicom_io.py SIMILAR_CROP_RANGE_DIFF_THRESHOLD for default value.')
+        parser.add_argument('--similar_crop_range_position_threshold', type=float, default=0.2,
+                            help='Max difference threshold for top pixel range position (min/max values, 0-1 range). See util/dicom_io.py SIMILAR_CROP_RANGE_POSITION_THRESHOLD for default value.')
+        parser.add_argument('--similar_crop_histogram_diff_threshold', type=float, default=0.5,
+                            help='Max histogram distance threshold (KL divergence-like, default: 0.5). See util/dicom_io.py SIMILAR_CROP_HISTOGRAM_DIFF_THRESHOLD for default value.')
         parser.add_argument('--similar_crop_top_pixel_ratio', type=float, default=0.05,
                             help='Ratio of top pixels to analyze (default: 0.05 = top 5%%). See util/dicom_io.py SIMILAR_CROP_TOP_PIXEL_RATIO for default value.')
         

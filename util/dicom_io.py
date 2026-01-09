@@ -14,8 +14,12 @@ except Exception as e:
 # この値以上差がある場合はHR画像を選び直す
 SIMILAR_CROP_MEDIAN_DIFF_THRESHOLD = 0.15
 
-# 使用するパーセンタイル（25%, 50%, 75%）
-SIMILAR_CROP_PERCENTILES = [25.0, 50.0, 75.0]
+# 使用するパーセンタイル（より詳細な分布を捉えるため拡張）
+SIMILAR_CROP_PERCENTILES = [10.0, 25.0, 50.0, 75.0, 90.0]
+
+# 値域分割の閾値（低値域、中値域、高値域に分割）
+SIMILAR_CROP_LOW_RANGE_THRESHOLD = 0.33   # 低値域: 0 ～ 33%
+SIMILAR_CROP_HIGH_RANGE_THRESHOLD = 0.67   # 高値域: 67% ～ 100%
 
 # 中心95%のレンジ（2.5%ile ～ 97.5%ile）
 PERCENTILE_RANGE_LOW = 2.5
@@ -26,8 +30,11 @@ PERCENTILE_RANGE_HIGH = 97.5
 SIMILAR_CROP_TOP_PIXEL_RATIO = 0.05
 # 最大値の分布差の閾値（0-1の範囲、デフォルト: 0.3 = 30%）
 SIMILAR_CROP_MAX_VALUE_DIFF_THRESHOLD = 0.3
-# 値域の幅の分布差の閾値（0-1の範囲、デフォルト: 0.3 = 30%）
-SIMILAR_CROP_RANGE_DIFF_THRESHOLD = 0.3
+# 値域の位置一致の閾値（最小値と最大値の差、0-1の範囲、デフォルト: 0.2 = 20%）
+SIMILAR_CROP_RANGE_POSITION_THRESHOLD = 0.2
+
+# ヒストグラムベースの類似度の閾値（KLダイバージェンス、デフォルト: 0.5）
+SIMILAR_CROP_HISTOGRAM_DIFF_THRESHOLD = 0.5
 
 def require_pydicom():
     if pydicom is None:
@@ -154,6 +161,83 @@ def compute_normalized_percentiles(img: np.ndarray, percentiles: List[float]) ->
     return np.array([np.percentile(normalized, p) for p in percentiles])
 
 
+def compute_range_segmented_stats(img: np.ndarray, low_thresh: float = 0.33, high_thresh: float = 0.67) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """
+    画像を値域で分割して各部分の統計量を計算（血管、肺、骨を区別するため）
+    
+    Args:
+        img: 正規化済み画像 (H, W) float32 in [0, 1]（正規化前の絶対値）
+        low_thresh: 低値域の閾値（デフォルト: 0.33）
+        high_thresh: 高値域の閾値（デフォルト: 0.67）
+    
+    Returns:
+        (low_range_stats, mid_range_stats, high_range_stats): 
+        各値域の[平均値, 標準偏差, パーセンタイル25, パーセンタイル50, パーセンタイル75]
+    """
+    img_flat = img.ravel()
+    
+    # 値域で分割
+    low_mask = img_flat < low_thresh
+    mid_mask = (img_flat >= low_thresh) & (img_flat < high_thresh)
+    high_mask = img_flat >= high_thresh
+    
+    def compute_stats(mask):
+        if np.sum(mask) == 0:
+            return np.array([0.0, 0.0, 0.0, 0.0, 0.0])
+        values = img_flat[mask]
+        mean_val = np.mean(values)
+        std_val = np.std(values)
+        p25 = np.percentile(values, 25.0)
+        p50 = np.percentile(values, 50.0)
+        p75 = np.percentile(values, 75.0)
+        return np.array([mean_val, std_val, p25, p50, p75])
+    
+    low_stats = compute_stats(low_mask)
+    mid_stats = compute_stats(mid_mask)
+    high_stats = compute_stats(high_mask)
+    
+    return low_stats, mid_stats, high_stats
+
+
+def compute_histogram_distance(img1: np.ndarray, img2: np.ndarray, bins: int = 50) -> float:
+    """
+    2つの画像のヒストグラム間の距離を計算（KLダイバージェンス風の距離）
+    
+    Args:
+        img1: 画像1 (H, W) float32 in [0, 1]
+        img2: 画像2 (H, W) float32 in [0, 1]
+        bins: ヒストグラムのビン数（デフォルト: 50）
+    
+    Returns:
+        ヒストグラム間の距離（0に近いほど類似）
+    """
+    # 正規化してヒストグラムを計算
+    low1, high1 = compute_percentile_range(img1)
+    low2, high2 = compute_percentile_range(img2)
+    norm1 = normalize_for_comparison(img1, low1, high1)
+    norm2 = normalize_for_comparison(img2, low2, high2)
+    
+    # ヒストグラムを計算
+    hist1, _ = np.histogram(norm1.ravel(), bins=bins, range=(0.0, 1.0), density=True)
+    hist2, _ = np.histogram(norm2.ravel(), bins=bins, range=(0.0, 1.0), density=True)
+    
+    # ゼロ除算を避けるため、小さな値を追加
+    eps = 1e-10
+    hist1 = hist1 + eps
+    hist2 = hist2 + eps
+    
+    # 正規化
+    hist1 = hist1 / (hist1.sum() + eps)
+    hist2 = hist2 / (hist2.sum() + eps)
+    
+    # KLダイバージェンス風の距離（対称化）
+    kl_12 = np.sum(hist1 * np.log((hist1 + eps) / (hist2 + eps)))
+    kl_21 = np.sum(hist2 * np.log((hist2 + eps) / (hist1 + eps)))
+    distance = (kl_12 + kl_21) / 2.0
+    
+    return float(distance)
+
+
 def compute_top_pixel_stats(img: np.ndarray, top_ratio: float = 0.05) -> Tuple[float, float, float]:
     """
     正規化前の絶対値で、ピクセル数の上位N%が集まっている値域を計算
@@ -190,7 +274,8 @@ def crop_similar_with_retry(
     max_image_retries: int = 3,
     median_diff_threshold: float = None,
     max_value_diff_threshold: float = None,
-    range_diff_threshold: float = None,
+    range_position_threshold: float = None,
+    histogram_diff_threshold: float = None,
     top_pixel_ratio: float = None
 ) -> Tuple[np.ndarray, int]:
     """
@@ -208,7 +293,8 @@ def crop_similar_with_retry(
         max_image_retries: HR画像選び直しの最大回数
         median_diff_threshold: 中央値差の閾値（Noneの場合はデフォルト値を使用）
         max_value_diff_threshold: 最大値の分布差の閾値（Noneの場合はデフォルト値を使用）
-        range_diff_threshold: 値域の幅の分布差の閾値（Noneの場合はデフォルト値を使用）
+        range_position_threshold: 値域の位置一致の閾値（Noneの場合はデフォルト値を使用）
+        histogram_diff_threshold: ヒストグラム距離の閾値（Noneの場合はデフォルト値を使用）
         top_pixel_ratio: ピクセル数の上位何%を対象にするか（Noneの場合はデフォルト値を使用）
     
     Returns:
@@ -220,18 +306,22 @@ def crop_similar_with_retry(
         median_diff_threshold = SIMILAR_CROP_MEDIAN_DIFF_THRESHOLD
     if max_value_diff_threshold is None:
         max_value_diff_threshold = SIMILAR_CROP_MAX_VALUE_DIFF_THRESHOLD
-    if range_diff_threshold is None:
-        range_diff_threshold = SIMILAR_CROP_RANGE_DIFF_THRESHOLD
+    if range_position_threshold is None:
+        range_position_threshold = SIMILAR_CROP_RANGE_POSITION_THRESHOLD
+    if histogram_diff_threshold is None:
+        histogram_diff_threshold = SIMILAR_CROP_HISTOGRAM_DIFF_THRESHOLD
     if top_pixel_ratio is None:
         top_pixel_ratio = SIMILAR_CROP_TOP_PIXEL_RATIO
     
     # LRクロップの上位N%の統計量を計算（正規化前の絶対値）
     ref_top_min, ref_top_max, ref_top_mean = compute_top_pixel_stats(reference_crop, top_pixel_ratio)
-    ref_top_range = ref_top_max - ref_top_min  # 値域の幅
     
     # LRクロップの正規化パーセンタイルを計算
     ref_percentiles = compute_normalized_percentiles(reference_crop, percentiles)
     ref_median = ref_percentiles[percentiles.index(50.0)] if 50.0 in percentiles else ref_percentiles[len(percentiles)//2]
+    
+    # LRクロップの値域分割統計量を計算
+    ref_low_stats, ref_mid_stats, ref_high_stats = compute_range_segmented_stats(reference_crop)
     
     best_crop = None
     best_distance = float('inf')
@@ -241,6 +331,7 @@ def crop_similar_with_retry(
         # 候補パッチを生成
         candidates = []
         candidate_percentiles = []
+        candidate_range_distances = []  # 値域分割統計量の距離を保存
         
         for _ in range(num_candidates):
             # crop_randomを使用して候補を生成
@@ -253,14 +344,22 @@ def crop_similar_with_retry(
             
             # 候補の上位N%の統計量を計算（正規化前の絶対値）
             cand_top_min, cand_top_max, cand_top_mean = compute_top_pixel_stats(candidate, top_pixel_ratio)
-            cand_top_range = cand_top_max - cand_top_min  # 値域の幅
             
-            # 値域の差をチェック（最大値と値域の幅のみチェック、最小値はチェックしない）
+            # 値域の位置一致をチェック（最小値と最大値の両方をチェック）
+            min_diff = abs(cand_top_min - ref_top_min)
             max_diff = abs(cand_top_max - ref_top_max)
-            range_diff = abs(cand_top_range - ref_top_range)
             
-            # 最大値または値域の幅が閾値を超えたら除外
-            if max_diff > max_value_diff_threshold or range_diff > range_diff_threshold:
+            # 最大値が閾値を超えたら除外（骨などの高値領域を除外）
+            if max_diff > max_value_diff_threshold:
+                continue  # この候補は除外
+            
+            # 値域の位置が大きくずれている場合は除外（最小値と最大値の両方が近い必要がある）
+            if min_diff > range_position_threshold or max_diff > range_position_threshold:
+                continue  # この候補は除外
+            
+            # ヒストグラム距離を計算
+            hist_distance = compute_histogram_distance(reference_crop, candidate)
+            if hist_distance > histogram_diff_threshold:
                 continue  # この候補は除外
             
             candidates.append(candidate)
@@ -268,11 +367,33 @@ def crop_similar_with_retry(
             # 候補の正規化パーセンタイルを計算
             cand_percentiles = compute_normalized_percentiles(candidate, percentiles)
             candidate_percentiles.append(cand_percentiles)
+            
+            # 候補の値域分割統計量を計算
+            cand_low_stats, cand_mid_stats, cand_high_stats = compute_range_segmented_stats(candidate)
+            
+            # 値域分割統計量の距離を計算（追加の類似度指標）
+            low_dist = np.linalg.norm(cand_low_stats - ref_low_stats)
+            mid_dist = np.linalg.norm(cand_mid_stats - ref_mid_stats)
+            high_dist = np.linalg.norm(cand_high_stats - ref_high_stats)
+            # 値域分割統計量の総合距離（重み付き平均）
+            range_distance = (low_dist + mid_dist * 2.0 + high_dist) / 4.0  # 中値域を重視
+            candidate_range_distances.append(range_distance)
         
-        # 各候補とLRクロップのL2距離を計算
+        # 各候補とLRクロップの距離を計算（パーセンタイル距離 + 値域分割統計量距離）
         candidate_percentiles = np.array(candidate_percentiles)
-        distances = np.linalg.norm(candidate_percentiles - ref_percentiles, axis=1)
-        best_idx = np.argmin(distances)
+        percentile_distances = np.linalg.norm(candidate_percentiles - ref_percentiles, axis=1)
+        range_distances = np.array(candidate_range_distances)
+        
+        # 正規化して組み合わせ（パーセンタイル距離を重視）
+        if len(percentile_distances) > 0:
+            percentile_dist_norm = percentile_distances / (percentile_distances.max() + 1e-10)
+            range_dist_norm = range_distances / (range_distances.max() + 1e-10) if range_distances.max() > 0 else range_distances
+            # パーセンタイル距離70%、値域分割距離30%の重みで組み合わせ
+            combined_distances = 0.7 * percentile_dist_norm + 0.3 * range_dist_norm
+        else:
+            combined_distances = percentile_distances
+        
+        best_idx = np.argmin(combined_distances)
         
         # 最良候補の中央値を確認
         best_cand_percentiles = candidate_percentiles[best_idx]
@@ -280,8 +401,8 @@ def crop_similar_with_retry(
         median_diff = abs(best_cand_median - ref_median)
         
         # より良い候補が見つかった場合、または閾値以下なら採用
-        if distances[best_idx] < best_distance:
-            best_distance = distances[best_idx]
+        if combined_distances[best_idx] < best_distance:
+            best_distance = combined_distances[best_idx]
             best_crop = candidates[best_idx]
             retry_count = image_retry
         
