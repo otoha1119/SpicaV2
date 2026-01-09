@@ -95,6 +95,10 @@ class TrainOptions(BaseOptions):
                             help='Max median difference (0-1 range) before retrying HR image. See util/dicom_io.py SIMILAR_CROP_MEDIAN_DIFF_THRESHOLD for default value.')
         parser.add_argument('--similar_crop_max_retries', type=int, default=3,
                             help='Max number of HR image retries')
+        parser.add_argument('--similar_crop_max_diff_threshold', type=float, default=0.3,
+                            help='Max difference threshold for top pixel stats (0-1 range). See util/dicom_io.py SIMILAR_CROP_MAX_DIFF_THRESHOLD for default value.')
+        parser.add_argument('--similar_crop_top_pixel_ratio', type=float, default=0.05,
+                            help='Ratio of top pixels to analyze (default: 0.05 = top 5%%). See util/dicom_io.py SIMILAR_CROP_TOP_PIXEL_RATIO for default value.')
         
         # サンプル画像保存オプション
         parser.add_argument('--num_sample_pairs', type=int, default=20,

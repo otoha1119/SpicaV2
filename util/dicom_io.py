@@ -21,6 +21,12 @@ SIMILAR_CROP_PERCENTILES = [25.0, 50.0, 75.0]
 PERCENTILE_RANGE_LOW = 2.5
 PERCENTILE_RANGE_HIGH = 97.5
 
+# 最大値付近のピクセル群の判定用定数
+# ピクセル数の上位何%を対象にするか（デフォルト: 5%）
+SIMILAR_CROP_TOP_PIXEL_RATIO = 0.05
+# 最大値付近の分布差の閾値（0-1の範囲、デフォルト: 0.3 = 30%）
+SIMILAR_CROP_MAX_DIFF_THRESHOLD = 0.3
+
 def require_pydicom():
     if pydicom is None:
         raise ImportError("pydicom is required but not installed. Please `pip install pydicom`.")
@@ -146,6 +152,32 @@ def compute_normalized_percentiles(img: np.ndarray, percentiles: List[float]) ->
     return np.array([np.percentile(normalized, p) for p in percentiles])
 
 
+def compute_top_pixel_stats(img: np.ndarray, top_ratio: float = 0.05) -> Tuple[float, float]:
+    """
+    正規化後の画像で、ピクセル数の上位N%の統計量を計算
+    
+    Args:
+        img: 正規化済み画像 (H, W) float32 in [0, 1]
+        top_ratio: 上位何%のピクセルを対象にするか（デフォルト: 0.05 = 5%）
+    
+    Returns:
+        (mean_value, max_value): 上位N%のピクセルの平均値と最大値
+    """
+    low, high = compute_percentile_range(img)
+    normalized = normalize_for_comparison(img, low, high)
+    
+    # ピクセル数の上位N%を取得
+    sorted_values = np.sort(normalized.ravel())
+    top_count = max(1, int(len(sorted_values) * top_ratio))
+    top_pixels = sorted_values[-top_count:]
+    
+    # 平均値と最大値
+    mean_value = np.mean(top_pixels) if len(top_pixels) > 0 else 0.0
+    max_value = np.max(top_pixels) if len(top_pixels) > 0 else 0.0
+    
+    return float(mean_value), float(max_value)
+
+
 def crop_similar_with_retry(
     target_img: np.ndarray,
     reference_crop: np.ndarray,
@@ -156,7 +188,9 @@ def crop_similar_with_retry(
     min_coverage: float = 0.0,
     max_tries: int = 32,
     max_image_retries: int = 3,
-    median_diff_threshold: float = None
+    median_diff_threshold: float = None,
+    max_diff_threshold: float = None,
+    top_pixel_ratio: float = None
 ) -> Tuple[np.ndarray, int]:
     """
     LRクロップに類似したHRクロップを見つける（HR画像選び直し対応）
@@ -172,6 +206,8 @@ def crop_similar_with_retry(
         max_tries: 候補パッチ生成の最大試行回数
         max_image_retries: HR画像選び直しの最大回数
         median_diff_threshold: 中央値差の閾値（Noneの場合はデフォルト値を使用）
+        max_diff_threshold: 最大値付近の分布差の閾値（Noneの場合はデフォルト値を使用）
+        top_pixel_ratio: ピクセル数の上位何%を対象にするか（Noneの場合はデフォルト値を使用）
     
     Returns:
         (best_crop, retry_count): 最良のクロップとリトライ回数
@@ -180,6 +216,13 @@ def crop_similar_with_retry(
         percentiles = SIMILAR_CROP_PERCENTILES
     if median_diff_threshold is None:
         median_diff_threshold = SIMILAR_CROP_MEDIAN_DIFF_THRESHOLD
+    if max_diff_threshold is None:
+        max_diff_threshold = SIMILAR_CROP_MAX_DIFF_THRESHOLD
+    if top_pixel_ratio is None:
+        top_pixel_ratio = SIMILAR_CROP_TOP_PIXEL_RATIO
+    
+    # LRクロップの上位N%の統計量を計算
+    ref_top_mean, ref_top_max = compute_top_pixel_stats(reference_crop, top_pixel_ratio)
     
     # LRクロップの正規化パーセンタイルを計算
     ref_percentiles = compute_normalized_percentiles(reference_crop, percentiles)
@@ -202,6 +245,16 @@ def crop_similar_with_retry(
                 min_coverage=min_coverage,
                 max_tries=max_tries
             )
+            
+            # 候補の上位N%の統計量を計算して、最大値付近の分布が大きく異なる場合は除外
+            cand_top_mean, cand_top_max = compute_top_pixel_stats(candidate, top_pixel_ratio)
+            mean_diff = abs(cand_top_mean - ref_top_mean)
+            max_diff = abs(cand_top_max - ref_top_max)
+            
+            # 平均値または最大値の差が閾値を超えたら除外
+            if mean_diff > max_diff_threshold or max_diff > max_diff_threshold:
+                continue  # この候補は除外
+            
             candidates.append(candidate)
             
             # 候補の正規化パーセンタイルを計算

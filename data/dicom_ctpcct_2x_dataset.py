@@ -54,6 +54,8 @@ class DicomCtpcct2xDataset(BaseDataset):
         self.similar_crop_candidates: int = int(getattr(opt, 'similar_crop_candidates', 32))
         self.similar_crop_median_threshold: float = float(getattr(opt, 'similar_crop_median_threshold', 0.15))
         self.similar_crop_max_retries: int = int(getattr(opt, 'similar_crop_max_retries', 3))
+        self.similar_crop_max_diff_threshold: float = float(getattr(opt, 'similar_crop_max_diff_threshold', 0.3))
+        self.similar_crop_top_pixel_ratio: float = float(getattr(opt, 'similar_crop_top_pixel_ratio', 0.05))
         
         # 画像保存設定（1エポック目1ステップ目のみ）
         self.save_sample_pairs: bool = bool(getattr(opt, 'save_sample_pairs', True))
@@ -221,7 +223,9 @@ class DicomCtpcct2xDataset(BaseDataset):
                 require_mask=hr_mask,
                 min_coverage=self.min_body_coverage if self.use_body_mask else 0.0,
                 max_image_retries=self.similar_crop_max_retries,
-                median_diff_threshold=self.similar_crop_median_threshold
+                median_diff_threshold=self.similar_crop_median_threshold,
+                max_diff_threshold=self.similar_crop_max_diff_threshold,
+                top_pixel_ratio=self.similar_crop_top_pixel_ratio
             )
         else:
             # 従来のランダムクロップ
