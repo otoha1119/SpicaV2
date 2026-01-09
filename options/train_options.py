@@ -95,6 +95,10 @@ class TrainOptions(BaseOptions):
                             help='Max median difference (0-1 range) before retrying HR image. See util/dicom_io.py SIMILAR_CROP_MEDIAN_DIFF_THRESHOLD for default value.')
         parser.add_argument('--similar_crop_max_retries', type=int, default=3,
                             help='Max number of HR image retries')
+        
+        # サンプル画像保存オプション
+        parser.add_argument('--num_sample_pairs', type=int, default=20,
+                            help='Number of sample pairs to save at epoch 1 step 1 (default: 20)')
 
         # ---- 以下、元の大量の専用パス等は削除/非推奨化 ----
         # * all_*_paths / encoder_path / code_channel など研究固有のものは一旦撤去。

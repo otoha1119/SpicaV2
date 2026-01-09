@@ -35,6 +35,8 @@ class Trainer:
         self.total_iters = 0
         # サンプル画像保存フラグ（1エポック目1ステップ目のみ）
         self._sample_saved = False
+        # 保存するサンプルペア数
+        self.num_sample_pairs = int(getattr(opt, 'num_sample_pairs', 20))
 
     def train(self):
         """学習ループ本体（エポックループ + イテレーションループ）"""
@@ -126,67 +128,87 @@ class Trainer:
         logger.close()
     
     def _save_sample_pair(self, data, epoch: int, step: int):
-        """1エポック目1ステップ目のペア画像を保存"""
+        """1エポック目1ステップ目のペア画像を保存（複数ペア対応）"""
         if self._sample_saved:
             return
         
-        # データから画像を取得（バッチの最初のサンプルを使用）
-        # DataLoaderが返すデータはバッチ形式なので、最初のサンプルを取得
-        if 'lr_crop_np' in data and 'hr_crop_np' in data:
-            # numpy配列がテンソルに変換されている場合
-            if isinstance(data['lr_crop_np'], torch.Tensor):
-                lr_crop = data['lr_crop_np'][0].cpu().numpy()
-            else:
-                lr_crop = data['lr_crop_np'][0] if isinstance(data['lr_crop_np'], (list, tuple)) else data['lr_crop_np']
-            
-            if isinstance(data['hr_crop_np'], torch.Tensor):
-                hr_crop = data['hr_crop_np'][0].cpu().numpy()
-            else:
-                hr_crop = data['hr_crop_np'][0] if isinstance(data['hr_crop_np'], (list, tuple)) else data['hr_crop_np']
+        # バッチサイズを取得
+        if isinstance(data['A'], torch.Tensor):
+            batch_size = data['A'].shape[0]
         else:
-            # フォールバック: テンソルから取得（チャンネル次元を除去）
-            if isinstance(data['A'], torch.Tensor):
-                lr_crop = data['A'][0, 0].cpu().numpy()  # (C, H, W) -> (H, W)
-            else:
-                lr_crop = data['A'][0, 0] if len(data['A'][0].shape) == 3 else data['A'][0]
-            
-            if isinstance(data['B'], torch.Tensor):
-                hr_crop = data['B'][0, 0].cpu().numpy()  # (C, H, W) -> (H, W)
-            else:
-                hr_crop = data['B'][0, 0] if len(data['B'][0].shape) == 3 else data['B'][0]
+            batch_size = len(data['A']) if isinstance(data['A'], (list, tuple)) else 1
         
-        # パス情報を取得
-        lr_path = data.get('A_paths', ['unknown'])
-        hr_path = data.get('B_paths', ['unknown'])
-        if isinstance(lr_path, (list, tuple)):
-            lr_path = lr_path[0]
-        if isinstance(hr_path, (list, tuple)):
-            hr_path = hr_path[0]
+        # 保存するペア数を決定（バッチサイズと指定数の小さい方）
+        num_to_save = min(batch_size, self.num_sample_pairs)
         
         # 保存ディレクトリを作成
         save_dir = Path(self.opt.checkpoints_dir) / self.opt.name / "sample_pairs"
         save_dir.mkdir(parents=True, exist_ok=True)
         
-        # 画像を[0, 1]から[0, 255]に変換
-        lr_img_uint8 = (np.clip(lr_crop, 0, 1) * 255).astype(np.uint8)
-        hr_img_uint8 = (np.clip(hr_crop, 0, 1) * 255).astype(np.uint8)
+        saved_count = 0
         
-        # PIL Imageに変換して保存
-        lr_pil = Image.fromarray(lr_img_uint8, mode='L')
-        hr_pil = Image.fromarray(hr_img_uint8, mode='L')
-        
-        # ファイル名からパス情報を取得（簡易版）
-        lr_name = Path(lr_path).stem if isinstance(lr_path, str) else 'unknown'
-        hr_name = Path(hr_path).stem if isinstance(hr_path, str) else 'unknown'
-        
-        lr_pil.save(save_dir / f"LR_epoch{epoch}_step{step}_{lr_name}.png")
-        hr_pil.save(save_dir / f"HR_epoch{epoch}_step{step}_{hr_name}.png")
-        
-        # サイドバイサイドで保存
-        combined = Image.new('L', (lr_crop.shape[1] + hr_crop.shape[1], max(lr_crop.shape[0], hr_crop.shape[0])))
-        combined.paste(lr_pil, (0, 0))
-        combined.paste(hr_pil, (lr_crop.shape[1], 0))
-        combined.save(save_dir / f"pair_epoch{epoch}_step{step}_LR-{lr_name}_HR-{hr_name}.png")
+        # バッチから複数のサンプルを保存
+        for idx in range(num_to_save):
+            # データから画像を取得
+            if 'lr_crop_np' in data and 'hr_crop_np' in data:
+                # numpy配列がテンソルに変換されている場合
+                if isinstance(data['lr_crop_np'], torch.Tensor):
+                    lr_crop = data['lr_crop_np'][idx].cpu().numpy()
+                else:
+                    lr_crop = data['lr_crop_np'][idx] if isinstance(data['lr_crop_np'], (list, tuple)) else data['lr_crop_np']
+                
+                if isinstance(data['hr_crop_np'], torch.Tensor):
+                    hr_crop = data['hr_crop_np'][idx].cpu().numpy()
+                else:
+                    hr_crop = data['hr_crop_np'][idx] if isinstance(data['hr_crop_np'], (list, tuple)) else data['hr_crop_np']
+            else:
+                # フォールバック: テンソルから取得（チャンネル次元を除去）
+                if isinstance(data['A'], torch.Tensor):
+                    lr_crop = data['A'][idx, 0].cpu().numpy()  # (C, H, W) -> (H, W)
+                else:
+                    lr_crop = data['A'][idx, 0] if len(data['A'][idx].shape) == 3 else data['A'][idx]
+                
+                if isinstance(data['B'], torch.Tensor):
+                    hr_crop = data['B'][idx, 0].cpu().numpy()  # (C, H, W) -> (H, W)
+                else:
+                    hr_crop = data['B'][idx, 0] if len(data['B'][idx].shape) == 3 else data['B'][idx]
+            
+            # パス情報を取得
+            lr_path = data.get('A_paths', ['unknown'])
+            hr_path = data.get('B_paths', ['unknown'])
+            if isinstance(lr_path, (list, tuple)):
+                lr_path = lr_path[idx] if idx < len(lr_path) else 'unknown'
+            elif not isinstance(lr_path, str):
+                lr_path = 'unknown'
+            
+            if isinstance(hr_path, (list, tuple)):
+                hr_path = hr_path[idx] if idx < len(hr_path) else 'unknown'
+            elif not isinstance(hr_path, str):
+                hr_path = 'unknown'
+            
+            # 画像を[0, 1]から[0, 255]に変換
+            lr_img_uint8 = (np.clip(lr_crop, 0, 1) * 255).astype(np.uint8)
+            hr_img_uint8 = (np.clip(hr_crop, 0, 1) * 255).astype(np.uint8)
+            
+            # PIL Imageに変換して保存
+            lr_pil = Image.fromarray(lr_img_uint8, mode='L')
+            hr_pil = Image.fromarray(hr_img_uint8, mode='L')
+            
+            # ファイル名からパス情報を取得（簡易版）
+            lr_name = Path(lr_path).stem if isinstance(lr_path, str) else f'unknown_{idx}'
+            hr_name = Path(hr_path).stem if isinstance(hr_path, str) else f'unknown_{idx}'
+            
+            # 個別画像を保存
+            lr_pil.save(save_dir / f"LR_epoch{epoch}_step{step}_pair{idx+1:02d}_{lr_name}.png")
+            hr_pil.save(save_dir / f"HR_epoch{epoch}_step{step}_pair{idx+1:02d}_{hr_name}.png")
+            
+            # サイドバイサイドで保存
+            combined = Image.new('L', (lr_crop.shape[1] + hr_crop.shape[1], max(lr_crop.shape[0], hr_crop.shape[0])))
+            combined.paste(lr_pil, (0, 0))
+            combined.paste(hr_pil, (lr_crop.shape[1], 0))
+            combined.save(save_dir / f"pair{idx+1:02d}_epoch{epoch}_step{step}_LR-{lr_name}_HR-{hr_name}.png")
+            
+            saved_count += 1
         
         self._sample_saved = True
-        print(f"[Trainer] Sample pair saved to {save_dir}")
+        print(f"[Trainer] {saved_count} sample pairs saved to {save_dir}")
