@@ -1,6 +1,6 @@
 from __future__ import annotations
 import os, time
-from typing import List, Optional
+from typing import List, Optional, Tuple
 import numpy as np
 
 try:
@@ -8,6 +8,18 @@ try:
     from pydicom.uid import generate_uid
 except Exception as e:
     pydicom = None
+
+# ====== 類似クロップ用の定数 ======
+# 中央値の差の閾値（0-1の範囲、15% = 0.15）
+# この値以上差がある場合はHR画像を選び直す
+SIMILAR_CROP_MEDIAN_DIFF_THRESHOLD = 0.15
+
+# 使用するパーセンタイル（25%, 50%, 75%）
+SIMILAR_CROP_PERCENTILES = [25.0, 50.0, 75.0]
+
+# 中心95%のレンジ（2.5%ile ～ 97.5%ile）
+PERCENTILE_RANGE_LOW = 2.5
+PERCENTILE_RANGE_HIGH = 97.5
 
 def require_pydicom():
     if pydicom is None:
@@ -83,6 +95,155 @@ def crop_random(norm_img: np.ndarray, patch_size: int, require_mask: Optional[np
             return crop
     y = (H - ps)//2; x = (W - ps)//2
     return norm_img[y:y+ps, x:x+ps]
+
+def compute_percentile_range(img: np.ndarray) -> Tuple[float, float]:
+    """
+    画像の中心95%の値レンジ（2.5%ile～97.5%ile）を計算
+    
+    Args:
+        img: 正規化済み画像 (H, W) float32 in [0, 1]
+    
+    Returns:
+        (low, high): 2.5%ileと97.5%ileの値
+    """
+    low = np.percentile(img, PERCENTILE_RANGE_LOW)
+    high = np.percentile(img, PERCENTILE_RANGE_HIGH)
+    return float(low), float(high)
+
+
+def normalize_for_comparison(img: np.ndarray, low: float, high: float) -> np.ndarray:
+    """
+    画像を中心95%レンジで正規化（統計量比較用）
+    
+    Args:
+        img: 正規化済み画像 (H, W) float32 in [0, 1]
+        low: 2.5%ileの値
+        high: 97.5%ileの値
+    
+    Returns:
+        正規化された画像（値域は[0, 1]にマッピング、範囲外はクリップ）
+    """
+    if high <= low:
+        # レンジが0または負の場合、そのまま返す
+        return img
+    normalized = (img - low) / (high - low)
+    return np.clip(normalized, 0.0, 1.0)
+
+
+def compute_normalized_percentiles(img: np.ndarray, percentiles: List[float]) -> np.ndarray:
+    """
+    画像を中心95%レンジで正規化してからパーセンタイルを計算
+    
+    Args:
+        img: 正規化済み画像 (H, W) float32 in [0, 1]
+        percentiles: 計算するパーセンタイル値のリスト（例: [25.0, 50.0, 75.0]）
+    
+    Returns:
+        パーセンタイル値の配列 (len(percentiles),)
+    """
+    low, high = compute_percentile_range(img)
+    normalized = normalize_for_comparison(img, low, high)
+    return np.array([np.percentile(normalized, p) for p in percentiles])
+
+
+def crop_similar_with_retry(
+    target_img: np.ndarray,
+    reference_crop: np.ndarray,
+    patch_size: int,
+    num_candidates: int = 32,
+    percentiles: List[float] = None,
+    require_mask: Optional[np.ndarray] = None,
+    min_coverage: float = 0.0,
+    max_tries: int = 32,
+    max_image_retries: int = 3,
+    median_diff_threshold: float = None
+) -> Tuple[np.ndarray, int]:
+    """
+    LRクロップに類似したHRクロップを見つける（HR画像選び直し対応）
+    
+    Args:
+        target_img: HR画像全体 (H, W) float32 in [0, 1]
+        reference_crop: LRクロップ (patch_size, patch_size) float32 in [0, 1]
+        patch_size: パッチサイズ
+        num_candidates: HR画像から生成する候補パッチ数
+        percentiles: 使用するパーセンタイル値のリスト（Noneの場合はデフォルト値を使用）
+        require_mask: ボディマスク（オプション）
+        min_coverage: マスクの最小カバレッジ
+        max_tries: 候補パッチ生成の最大試行回数
+        max_image_retries: HR画像選び直しの最大回数
+        median_diff_threshold: 中央値差の閾値（Noneの場合はデフォルト値を使用）
+    
+    Returns:
+        (best_crop, retry_count): 最良のクロップとリトライ回数
+    """
+    if percentiles is None:
+        percentiles = SIMILAR_CROP_PERCENTILES
+    if median_diff_threshold is None:
+        median_diff_threshold = SIMILAR_CROP_MEDIAN_DIFF_THRESHOLD
+    
+    # LRクロップの正規化パーセンタイルを計算
+    ref_percentiles = compute_normalized_percentiles(reference_crop, percentiles)
+    ref_median = ref_percentiles[percentiles.index(50.0)] if 50.0 in percentiles else ref_percentiles[len(percentiles)//2]
+    
+    best_crop = None
+    best_distance = float('inf')
+    retry_count = 0
+    
+    for image_retry in range(max_image_retries):
+        # 候補パッチを生成
+        candidates = []
+        candidate_percentiles = []
+        
+        for _ in range(num_candidates):
+            # crop_randomを使用して候補を生成
+            candidate = crop_random(
+                target_img, patch_size,
+                require_mask=require_mask,
+                min_coverage=min_coverage,
+                max_tries=max_tries
+            )
+            candidates.append(candidate)
+            
+            # 候補の正規化パーセンタイルを計算
+            cand_percentiles = compute_normalized_percentiles(candidate, percentiles)
+            candidate_percentiles.append(cand_percentiles)
+        
+        # 各候補とLRクロップのL2距離を計算
+        candidate_percentiles = np.array(candidate_percentiles)
+        distances = np.linalg.norm(candidate_percentiles - ref_percentiles, axis=1)
+        best_idx = np.argmin(distances)
+        
+        # 最良候補の中央値を確認
+        best_cand_percentiles = candidate_percentiles[best_idx]
+        best_cand_median = best_cand_percentiles[percentiles.index(50.0)] if 50.0 in percentiles else best_cand_percentiles[len(percentiles)//2]
+        median_diff = abs(best_cand_median - ref_median)
+        
+        # より良い候補が見つかった場合、または閾値以下なら採用
+        if distances[best_idx] < best_distance:
+            best_distance = distances[best_idx]
+            best_crop = candidates[best_idx]
+            retry_count = image_retry
+        
+        # 中央値差が閾値以下なら採用して終了
+        if median_diff <= median_diff_threshold:
+            break
+    
+    # 最良候補を返す（リトライ上限に達した場合も含む）
+    if best_crop is None:
+        # フォールバック: 中央からクロップ
+        H, W = target_img.shape[:2]
+        ps = patch_size
+        if H < ps or W < ps:
+            pad_h = max(0, ps - H)
+            pad_w = max(0, ps - W)
+            target_img = np.pad(target_img, ((pad_h//2, pad_h - pad_h//2),(pad_w//2, pad_w - pad_w//2)), mode="reflect")
+            H, W = target_img.shape[:2]
+        y = (H - ps) // 2
+        x = (W - ps) // 2
+        best_crop = target_img[y:y+ps, x:x+ps]
+    
+    return best_crop, retry_count
+
 
 def save_dicom_like(reference_path: str, output_path: str, norm_img: np.ndarray, halves_pixel_spacing: bool=True):
     require_pydicom()

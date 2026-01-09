@@ -85,6 +85,16 @@ class TrainOptions(BaseOptions):
                             help='Disable persistent workers')
         parser.add_argument('--prefetch_factor', type=int, default=2,
                             help='Number of batches prefetched by each worker (default: 2)')
+        
+        # 類似クロップオプション
+        parser.add_argument('--use_similar_crop', action='store_true',
+                            help='Use HU-value similar cropping instead of random')
+        parser.add_argument('--similar_crop_candidates', type=int, default=32,
+                            help='Number of candidate patches to generate from HR image')
+        parser.add_argument('--similar_crop_median_threshold', type=float, default=0.15,
+                            help='Max median difference (0-1 range) before retrying HR image. See util/dicom_io.py SIMILAR_CROP_MEDIAN_DIFF_THRESHOLD for default value.')
+        parser.add_argument('--similar_crop_max_retries', type=int, default=3,
+                            help='Max number of HR image retries')
 
         # ---- 以下、元の大量の専用パス等は削除/非推奨化 ----
         # * all_*_paths / encoder_path / code_channel など研究固有のものは一旦撤去。
