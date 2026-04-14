@@ -1,17 +1,5 @@
 # SpicaV2
 
-## 作業タグ
-add：新規機能追加<br>
-modify：バグではない修正<br>
-fix：既存バグ修正<br>
-hotfix：クリティカルなバグ修正<br>
-refactor：整理<br>
-delete：削除<br>
-move:ファイル・フォルダの移動<br>
-revert：変更取り消し<br>
-other：その他<br>
-
-
 ## 概要
 本プロジェクトはSRーCycleGANを改良した超解像モデルである<br>
 dockerを用いて環境を構築している，50シリーズGPUと30シリーズGPUの両方ようのdockerフォルダがある<br>
